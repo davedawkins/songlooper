@@ -1,0 +1,157 @@
+import os
+import json
+import tkinter as tk
+from tkinter import ttk, messagebox
+
+class SongSelectionPanel(ttk.LabelFrame):
+    """Panel for selecting and loading songs."""
+    
+    def __init__(self, parent, app):
+        super().__init__(parent, text="Song Selection", padding="10")
+        self.app = app
+        
+        # Setup internal layout
+        self.setup_ui()
+    
+    def setup_ui(self):
+        """Set up the song selection UI."""
+        ttk.Label(self, text="Available Songs:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
+        
+        self.scb = ttk.Combobox(self, state="readonly", width=40)
+        self.scb.grid(row=0, column=1, sticky=tk.W+tk.E, padx=(0, 5))
+        self.scb.bind("<<ComboboxSelected>>", self.on_song_selected)
+        
+        ttk.Button(self, text="Load Song", command=self.load_selected_song).grid(row=0, column=2, padx=5)
+        ttk.Button(self, text="Refresh List", command=self.refresh_song_list).grid(row=0, column=3)
+        
+        # Configure grid column weights for resizing
+        self.columnconfigure(1, weight=1)
+    
+    def on_song_selected(self, event):
+        """Handle song selection from dropdown."""
+        self.app.sts.set(f"Selected: {self.scb.get()}")
+        self.app.settings.save_settings(self.app)
+    
+    def refresh_song_list(self):
+        """Refresh the list of available songs."""
+        if not self.app.dir or not os.path.isdir(self.app.dir):
+            messagebox.showerror("Error", "Please select a valid songs folder")
+            return
+        
+        try:
+            # First get available songs
+            song_list = self.app.eng.get_available_songs(self.app.dir)
+            
+            # Check for songs without config files and create default configs
+            for song_folder in os.listdir(self.app.dir):
+                full_path = os.path.join(self.app.dir, song_folder)
+                if not os.path.isdir(full_path):
+                    continue
+                    
+                config_path = os.path.join(full_path, "config.json")
+                if not os.path.exists(config_path):
+                    # Create default config for this song
+                    self.create_default_config(full_path)
+                    # If this wasn't in the list, add it
+                    if song_folder not in song_list:
+                        song_list.append(song_folder)
+            
+            # Sort alphabetically
+            song_list.sort()
+            
+            self.scb["values"] = song_list
+            if song_list:
+                self.scb.current(0)
+                self.app.sts.set(f"Found {len(song_list)} songs")
+            else:
+                self.app.sts.set("No songs found in the selected folder")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load songs: {str(e)}")
+    
+    def create_default_config(self, song_folder):
+        """Create a default config.json for a song folder."""
+        try:
+            # Use folder name as title
+            title = os.path.basename(song_folder)
+            
+            # Create default config
+            config = {
+                "title": title,
+                "bpm": 120.0,  # Default BPM
+                "sections": []  # No sections initially
+            }
+            
+            # Write config to file
+            config_path = os.path.join(song_folder, "config.json")
+            with open(config_path, 'w') as f:
+                json.dump(config, f, indent=2)
+                
+            print(f"Created default config for {title}")
+        except Exception as e:
+            print(f"Error creating default config: {str(e)}")
+    
+    def load_selected_song(self):
+        """Load the currently selected song."""
+        if not self.scb.get():
+            messagebox.showerror("Error", "Please select a song")
+            return
+        
+        song_folder = os.path.join(self.app.dir, self.scb.get())
+        try:
+            # Force stop any current playback
+            self.app.eng.stop()
+            self.app.set_play_button_text(False)
+            
+            song_config = self.app.eng.load_song(song_folder)
+            self.app.sts.set(f"Loaded: {song_config.title}")
+            
+            # BPM (pass to playback panel)
+            self.app.playback_panel.update_bpm(str(int(song_config.bpm)))
+            
+            # Sections
+            self.app.section_panel.update_section_combobox()
+            
+            # Initialize section boundaries
+            if self.app.section_panel.xcb.get() == "Full Song":
+                start_time = 0.0
+                end_time = self.app.eng.get_total_duration()
+            else:
+                for s in song_config.sections:
+                    if s.name == self.app.section_panel.xcb.get():
+                        start_time = s.start_time
+                        end_time = s.end_time
+                        break
+                else:  # Default if section not found
+                    start_time = 0.0
+                    end_time = self.app.eng.get_total_duration()
+            
+            # Set section name and times
+            self.app.snm.set(self.app.section_panel.xcb.get())
+            self.app.stt.set(round(start_time, 2))
+            self.app.ent.set(round(end_time, 2))
+            
+            # Reset view mode to full song
+            self.app.svm.set(False)
+            
+            # Update UI components
+            self.app.stems_panel.update_stems_panel()
+            
+            # Slider range - always start in full song view
+            total_duration = self.app.eng.get_total_duration()
+            # Update canvas directly instead of using the slider (which is now removed)
+            self.app.slider_view.update_time_label(0, total_duration)
+            self.app.slider_view.update_marker_positions()
+            
+            # Restore muted stems
+            if song_config.title in self.app.settings.mut:
+                for stem_name in self.app.settings.mut[song_config.title]:
+                    self.app.eng.toggle_mute_stem(stem_name)
+                    if stem_name in self.app.stems_panel.stv:
+                        self.app.stems_panel.stv[stem_name].set(False)
+            
+            # Reset to 0
+            self.app.eng.set_start_position(0.0)
+            
+            self.app.settings.save_settings(self.app)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load song: {str(e)}")

@@ -1,0 +1,10 @@
+{
+  "songs_folder": "/Users/david/projects/songlooper/Songs",
+  "current_song": "PlaceYourHands",
+  "current_section": "Full Song",
+  "speed": 0.8,
+  "loop_delay": 0.5,
+  "loop_playback": true,
+  "count_in": false,
+  "muted_stems_info": {}
+}
