@@ -13,7 +13,7 @@
     ]
   },
   "midi_settings": {
-    "enabled": true,
+    "enabled": null,
     "device": "MPK mini 3",
     "play_pause_note": 60,
     "rewind_note": 62,

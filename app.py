@@ -17,7 +17,7 @@ class GuitarPracticeApp:
         self.root = root
         self.root.title("Guitar Practice Tool")
         self.root.geometry("800x600")
-        self.root.minsize(600, 500)
+        self.root.minsize(600, 800)
         
         # --- Engine & State ---
         self.eng = AudioEngine()
