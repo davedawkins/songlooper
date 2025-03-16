@@ -1,5 +1,6 @@
 import os
 import json
+from ui.slider_time_utils import SliderTimeUtils
 
 class SettingsManager:
     """Manages loading and saving application settings."""
@@ -9,7 +10,7 @@ class SettingsManager:
     def __init__(self):
         # Settings data
         self.mut = {}  # Muted stems info
-        self.pss = None  # Pending section selection
+        # self.pss = None  # Pending section selection
         self.midi_settings = {
             "enabled": False,
             "device": "",
@@ -42,15 +43,14 @@ class SettingsManager:
         app.cin.set(data.get("count_in", False))
         
         self.mut = data.get("muted_stems_info", {})
-        print("Settings: mut " + str(self.mut))
 
-        self.pss = data.get("current_section", None)
+        # self.pss = data.get("current_section", None)
         
         # Load MIDI settings if available
         self.midi_settings = data.get("midi_settings", {})
 
-        self.section_name = data.get("current_section", "Full Song")
-    
+        # self.section_name = data.get("current_section", "Full Song")
+
     def save_settings(self, app):
         """Save app settings to file."""
         # For section times, save the actual numeric values
@@ -58,8 +58,8 @@ class SettingsManager:
         end_time = 0.0
         if hasattr(app, 'section_panel'):
             try:
-                start_time = app.section_panel.parse_time(app.stt.get())
-                end_time = app.section_panel.parse_time(app.ent.get())
+                start_time = SliderTimeUtils.parse_time(app.stt.get())
+                end_time = SliderTimeUtils.parse_time(app.ent.get())
             except (ValueError, AttributeError):
                 pass
         

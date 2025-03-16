@@ -14,15 +14,10 @@ class SliderView(ttk.Frame):
         super().__init__(parent)
         self.app = app
         
-        # Get references to app variables
-        self.stt = app.stt  # Start time
-        self.ent = app.ent  # End time
-        self.svm = app.svm  # Section view mode
-        
         # Position tracking
-        self.pos = tk.DoubleVar(value=0)
+        # self.pos = tk.DoubleVar(value=0)
         # Add trace to position variable for data binding
-        self.pos.trace_add("write", self.on_position_changed)
+        app.pos.trace_add("write", self.on_position_changed)
         
         # Create utility components first
         self.waveform = SliderWaveform(self)
@@ -35,16 +30,16 @@ class SliderView(ttk.Frame):
     def setup_ui(self):
         """Set up the slider view UI."""
         # Main container frame with padding
-        main_frame = ttk.Frame(self, padding=5)
+        main_frame = ttk.Frame(self, padding=0)
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         # Time label
-        self.time_label = ttk.Label(main_frame, text="00:00.0 / 00:00.0", width=20)
-        self.time_label.pack(side=tk.LEFT, padx=(0, 5))
+        # self.time_label = ttk.Label(main_frame, text="00:00.0 / 00:00.0", width=20)
+        # self.time_label.pack(side=tk.LEFT, padx=(0, 5))
         
         # Slider canvas frame
         self.slider_frame = ttk.Frame(main_frame)
-        self.slider_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5)
+        self.slider_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=0)
         
         # Calculate canvas height based on stem count
         canvas_height = self.calculate_canvas_height()
@@ -101,25 +96,17 @@ class SliderView(ttk.Frame):
     
     def on_position_changed(self, *args):
         """Called when the position variable changes, updates the UI."""
-        if hasattr(self.app, 'eng') and self.app.eng.current_song:
-            self.time_utils.update_time_label(self.pos.get(), self.app.eng.get_total_duration())
+        # if self.app.eng.current_song:
+        #     self.time_utils.update_time_label(self.app.pos.get(), self.app.eng.get_total_duration())
             
         # Only update marker positions if not dragging to avoid conflicts
         if not self.markers.dragging_marker:
             self.update_marker_positions()
     
     # Forward methods to appropriate component
-    def update_time_label(self, current, total):
-        """Forward to time_utils."""
-        self.time_utils.update_time_label(current, total)
-    
-    def format_time(self, seconds):
-        """Forward to time_utils."""
-        return self.time_utils.format_time(seconds)
-    
-    def parse_time(self, time_str):
-        """Forward to time_utils."""
-        return self.time_utils.parse_time(time_str)
+    # def update_time_label(self, current, total):
+    #     """Forward to time_utils."""
+    #     self.time_utils.update_time_label(current, total)
     
     def time_to_x(self, time):
         """Forward to time_utils."""

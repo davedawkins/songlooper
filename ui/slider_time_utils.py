@@ -8,15 +8,16 @@ class SliderTimeUtils:
     def __init__(self, slider_view):
         """Initialize with reference to the parent SliderView."""
         self.slider_view = slider_view
-    
-    def format_time(self, seconds):
+        self.app = slider_view.app
+        
+    def format_time(seconds):
         """Format time in mm:ss.c format."""
         minutes, sec_frac = divmod(seconds, 60)
         sec = int(sec_frac)
         decisec = int((sec_frac - sec) * 10)  # Only one decimal place
         return f"{int(minutes):02d}:{sec:02d}.{decisec}"
 
-    def parse_time(self, time_str):
+    def parse_time(time_str):
         """Parse time from either mm:ss.c format or float seconds."""
         if ":" in time_str:
             try:
@@ -44,20 +45,20 @@ class SliderTimeUtils:
             except ValueError:
                 return None
 
-    def update_time_label(self, current, total):
-        """Update the time display label with format mm:ss.c."""
-        time_text = f"{self.format_time(current)} / {self.format_time(total)}"
-        self.slider_view.time_label.config(text=time_text)
+    # def update_time_label(self, current, total):
+    #     """Update the time display label with format mm:ss.c."""
+    #     time_text = f"{SliderTimeUtils.format_time(current)} / {SliderTimeUtils.format_time(total)}"
+    #     self.slider_view.time_label.config(text=time_text)
     
     def time_to_x(self, time):
         """Convert time value to x coordinate."""
         canvas_width = self.slider_view.canvas.winfo_width()
         label_width = self.slider_view.waveform.LABEL_WIDTH
         
-        if self.slider_view.svm.get():
+        if self.app.svm.get():
             # Section view
-            start_time = self.parse_time(self.slider_view.stt.get())
-            end_time = self.parse_time(self.slider_view.ent.get())
+            start_time = SliderTimeUtils.parse_time(self.app.stt.get())
+            end_time = SliderTimeUtils.parse_time(self.app.ent.get())
             section_range = max(0.1, end_time - start_time)
             
             position_ratio = (time - start_time) / section_range
@@ -84,10 +85,10 @@ class SliderTimeUtils:
         if x <= label_width:
             x = label_width + 1
         
-        if self.slider_view.svm.get():
+        if self.app.svm.get():
             # Section view
-            start_time = self.parse_time(self.slider_view.stt.get())
-            end_time = self.parse_time(self.slider_view.ent.get())
+            start_time = SliderTimeUtils.parse_time(self.app.stt.get())
+            end_time = SliderTimeUtils.parse_time(self.app.ent.get())
             section_range = max(0.1, end_time - start_time)
             
             # Adjust for the padding and label width
@@ -119,16 +120,17 @@ class SliderTimeUtils:
         # Update engine position
         was_playing = self.slider_view.app.eng.is_playing()
         if was_playing:
-            self.slider_view.app.eng.stop()
+            self.slider_view.app.eng.pause()
         
+        print("update_position_from_x: Setting engine start position: " + str(new_pos))
         self.slider_view.app.eng.set_start_position(new_pos)
         
         # Update position variable - triggers UI update through trace
-        self.slider_view.pos.set(new_pos)
+        self.app.pos.set(new_pos)
         
         # Resume playback if needed
         if was_playing:
             self.slider_view.app.play_current()
-            self.slider_view.app.sts.set(f"Position: {self.format_time(new_pos)}")
+            self.slider_view.app.sts.set(f"Position: {SliderTimeUtils.format_time(new_pos)}")
         else:
-            self.slider_view.app.sts.set(f"Position: {self.format_time(new_pos)}")
+            self.slider_view.app.sts.set(f"Position: {SliderTimeUtils.format_time(new_pos)}")

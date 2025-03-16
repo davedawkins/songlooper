@@ -11,6 +11,30 @@ from ui.stems_panel import StemsPanel
 from ui.midi_settings import MidiSettingsPanel
 from utils.settings import SettingsManager
 from utils.midi_controller import MidiController
+from ui.slider_time_utils import SliderTimeUtils
+from tkhtmlview import HTMLLabel
+import markdown
+
+class TimeLabel(ttk.Label):
+
+    def __init__(self,parent,app):
+        super().__init__(parent)
+        self.app = app
+        self.setup_ui()
+
+    def setup_ui(self):
+        self.config(text="00:00.0 / 00:00.0", width=20)
+        self.pack(side=tk.LEFT, padx=(0, 5))
+
+        self.app.dur.trace_add("write", lambda *args: self.update())
+        self.app.pos.trace_add("write", lambda *args: self.update())
+        
+    def update(self):
+        current = self.app.pos.get()
+        total   = self.app.dur.get()
+
+        time_text = f"{SliderTimeUtils.format_time(current)} / {SliderTimeUtils.format_time(total)}"
+        self.config(text=time_text)
 
 class GuitarPracticeApp:
     def __init__(self, root):
@@ -37,6 +61,7 @@ class GuitarPracticeApp:
         self.lop = tk.BooleanVar(value=True)  # Loop
         self.cin = tk.BooleanVar(value=False)  # Count-in
         self.snm = tk.StringVar()  # Section name
+        self.songName = tk.StringVar()
         self.svm = tk.BooleanVar(value=False)  # Section view mode
         self.stt = tk.StringVar(value="00:00.0")  # Start time
         self.ent = tk.StringVar(value="00:00.0")  # End time
@@ -44,7 +69,9 @@ class GuitarPracticeApp:
 
         # Status variable
         self.sts = tk.StringVar(value="Ready")
-        
+        self.pos = tk.DoubleVar(value=0.0) # Song position
+        self.dur = tk.DoubleVar(value=0.0)
+
         # Settings manager
         self.settings = SettingsManager()
         # Store reference to app in settings manager for MIDI settings
@@ -75,7 +102,7 @@ class GuitarPracticeApp:
     def setup_ui(self):
         """Build the main UI frame and all components."""
         # Main frame
-        self.frm = ttk.Frame(self.root, padding="10")
+        self.frm = ttk.Frame(self.root, padding=20)
         self.frm.pack(fill=tk.BOTH, expand=True)
         
         # Create menu
@@ -86,37 +113,68 @@ class GuitarPracticeApp:
         
         # Create panels
         self.song_panel = SongSelectionPanel(self.frm, self)
-        self.song_panel.pack(fill=tk.X, pady=(0, 10))
+        self.song_panel.pack(fill=tk.X, pady=(0, 2))
         
         self.section_panel = SectionControlPanel(self.frm, self)
-        self.section_panel.pack(fill=tk.X, pady=(0, 10))
+        self.section_panel.pack(fill=tk.X, pady=(0, 2))
         
         self.playback_panel = PlaybackControlPanel(self.frm, self)
-        self.playback_panel.pack(fill=tk.X, pady=(0, 10))
+        self.playback_panel.pack(fill=tk.X, pady=(0, 2))
         
         # Slider with markers
         self.slider_view = SliderView(self.frm, self)
-        self.slider_view.pack(fill=tk.BOTH, pady=(0, 10))
+        self.slider_view.pack(fill=tk.BOTH, pady=(0, 2))
         
         # Transport buttons
         self.setup_transport()
         
         # Create notebook for tabbed panels
-        self.notebook = ttk.Notebook(self.frm)
-        self.notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 10))
+        self.notebook = ttk.Notebook(self.frm,padding=[0,0,0,10])
+        self.notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 0))
         
+        self.notes_frame = tk.Frame( self.notebook, bg="white")
+        self.notes_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
+        
+        self.notes_frame2 = tk.Frame( self.notes_frame)
+        self.notes_frame2.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        self.notes_panel = HTMLLabel(self.notes_frame2, html="No notes", background="white", borderwidth=0, highlightthickness=0)
+        self.notes_panel.pack(fill=tk.BOTH, expand=True)
+        self.notebook.add(self.notes_frame, text="Notes")
+
+
         # Stems panel (first tab)
         self.stems_panel = StemsPanel(self.notebook, self)
         self.notebook.add(self.stems_panel, text="Stems")
         
         # MIDI settings panel (second tab)
-        if self.midi_controller is not None:
-            self.midi_panel = MidiSettingsPanel(self.notebook, self)
-            self.notebook.add(self.midi_panel, text="MIDI Control")
+        self.midi_panel = MidiSettingsPanel(self.notebook, self)
+        self.notebook.add(self.midi_panel, text="MIDI Control")
         
         # Status bar
         ttk.Label(self.frm, textvariable=self.sts, relief=tk.SUNKEN, anchor=tk.W).pack(fill=tk.X, side=tk.BOTTOM)
+
+        self.songName.trace_add( "write", lambda *args: self.loadNotes())
     
+    def wrapHtml( html : str ):
+        return f"""
+    <div style="background-color: white;">
+    {html}
+    </div>
+    """
+
+    def loadNotes(self):
+        song_name = self.songName.get()
+        notes_path = os.path.join(self.dir,song_name, "notes.md")
+        if os.path.exists(notes_path):
+            with open(notes_path, "r", encoding="utf-8") as file:
+                content = file.read()
+                html_text = markdown.markdown(content)
+                self.notes_panel.set_html( GuitarPracticeApp.wrapHtml(html_text) )
+                print(html_text)
+        else:
+            self.notes_panel.set_html( GuitarPracticeApp.wrapHtml("(Add song notes to " + notes_path + ")") )
+            
     def setup_menu(self):
         """Set up application menu."""
         menu_bar = Menu(self.root)
@@ -220,7 +278,7 @@ class GuitarPracticeApp:
             
         # Get current position and section start
         current_pos = self.eng.get_current_position()
-        start_time = self.section_panel.parse_time(self.stt.get())
+        start_time = SliderTimeUtils.parse_time(self.stt.get())
         
         # Calculate new position (3 seconds back, but not before section start)
         new_pos = max(start_time, current_pos - 3.0)
@@ -229,26 +287,26 @@ class GuitarPracticeApp:
         was_playing = self.eng.is_playing()
         if was_playing:
             self.eng.pause()
-        
+
         self.eng.set_start_position(new_pos)
         
         # Update UI
-        self.slider_view.pos.set(new_pos)
-        self.slider_view.update_marker_positions()
+        self.pos.set(new_pos)
+        # self.slider_view.update_marker_positions()
         
         # Resume if was playing
         if was_playing:
             self.play_current()
-            self.sts.set(f"Moved back to {self.section_panel.format_time(new_pos)}")
+            self.sts.set(f"Moved back to {SliderTimeUtils.format_time(new_pos)}")
         else:
-            self.sts.set(f"Position: {self.section_panel.format_time(new_pos)}")
+            self.sts.set(f"Position: {SliderTimeUtils.format_time(new_pos)}")
             
         return "break"  # Prevent default behavior
     
     def setup_folder_selection(self):
         """Setup the folder selection UI."""
         top = ttk.Frame(self.frm)
-        top.pack(fill=tk.X, pady=(0, 10))
+        top.pack(fill=tk.X, pady=(0, 0))
         
         ttk.Label(top, text="Songs Folder:").pack(side=tk.LEFT, padx=(0, 5))
         folder_entry = ttk.Entry(top, textvariable=self.fdr, width=50)
@@ -267,6 +325,9 @@ class GuitarPracticeApp:
         self.ppb = ttk.Button(tpf, text="▶", command=self.play_pause_toggle)
         self.ppb.pack(side=tk.LEFT, padx=5)
     
+        self.time_label = TimeLabel(tpf, self)
+        self.time_label.pack(side=tk.LEFT, padx=5)
+
     def browse_folder(self):
         """Open folder dialog and load songs."""
         from tkinter import filedialog
@@ -316,8 +377,10 @@ class GuitarPracticeApp:
 
         # Load section times in mm:ss.c format
         # This must happen after song is loaded so we have valid section data
-        if hasattr(app, 'section_panel') and app.eng.current_song:
-            section_name = app.settings.section_name
+        if app.eng.current_song:
+            section_name = app.snm.get()
+            print("Section: " + section_name)
+
             if section_name == "Full Song":
                 start_time = 0.0
                 end_time = app.eng.get_total_duration()
@@ -330,12 +393,14 @@ class GuitarPracticeApp:
                         break
                 else:
                     # Default if section not found
+                    print("Section not found: " + section_name)
                     start_time = 0.0
                     end_time = app.eng.get_total_duration()
             
             # Format times for display
-            app.stt.set(app.section_panel.format_time(start_time))
-            app.ent.set(app.section_panel.format_time(end_time))
+            app.pos.set( app.eng.get_current_position() )
+            app.stt.set(SliderTimeUtils.format_time(start_time))
+            app.ent.set(SliderTimeUtils.format_time(end_time))
 
         self.update_song_position()
     
@@ -346,8 +411,7 @@ class GuitarPracticeApp:
     
     def on_mute_status_change(self):
         """Callback for when a stem's mute status changes during playback."""
-        if hasattr(self, 'slider_view'):
-            self.slider_view.update_marker_positions()
+        self.slider_view.update_marker_positions()
     
     def update_song_position(self):
         """Poll engine position and update UI."""
@@ -356,23 +420,23 @@ class GuitarPracticeApp:
             total_duration = self.eng.get_total_duration()
             
             # Update position variable using data binding
-            self.slider_view.pos.set(pos)
-            
+            self.pos.set(pos)
+
             # Check if we've hit the end marker for the section
             end_time_str = self.ent.get()
-            end_time = self.section_panel.parse_time(end_time_str)
+            end_time = SliderTimeUtils.parse_time(end_time_str)
             
             if pos >= end_time:
                 if self.lop.get():
                     # Loop back to start of section
-                    self.eng.stop()
-                    start_time = self.section_panel.parse_time(self.stt.get()) 
+                    self.eng.pause()
+                    start_time = SliderTimeUtils.parse_time(self.stt.get()) 
                     self.eng.set_start_position(start_time)
                     self.play_current()
                     self.sts.set(f"Looped back to section start")
                 else:
                     # Stop playback at end marker
-                    self.eng.stop()
+                    self.eng.pause()
                     self.set_play_button_text(False)
                     self.sts.set(f"Reached end of section")
         
@@ -398,7 +462,7 @@ class GuitarPracticeApp:
         
         try:
             current_pos = self.eng.get_current_position()
-            start_time = self.section_panel.parse_time(self.stt.get())
+            start_time = SliderTimeUtils.parse_time(self.stt.get())
             
             # Only check lower boundary - we allow playing beyond the end marker
             if current_pos < start_time:
@@ -422,7 +486,7 @@ class GuitarPracticeApp:
                 disp_sec = section_name or "Full Song"
                 self.sts.set(f"Playing: {disp_sec} at {self.spd.get()}x speed")
             else:
-                formatted_time = self.section_panel.format_time(old_pos)
+                formatted_time = SliderTimeUtils.format_time(old_pos)
                 self.sts.set(f"Resumed from {formatted_time} at {self.spd.get()}x speed")
         except Exception as e:
             messagebox.showerror("Error", f"Failed to play: {str(e)}")
@@ -448,18 +512,18 @@ class GuitarPracticeApp:
         
         # Get start time for the current section
         start_time_str = self.stt.get()
-        start_time = self.section_panel.parse_time(start_time_str)
+        start_time = SliderTimeUtils.parse_time(start_time_str)
         was_playing = self.eng.is_playing()
         
         # Stop playback
-        self.eng.stop()
+        self.eng.pause()
         
         # Update engine position
         self.eng.set_start_position(start_time)
         
         # Update slider position variable
         # This triggers the trace callback which updates the UI
-        self.slider_view.pos.set(start_time)
+        self.pos.set(start_time)
         
         # Force an update of the marker positions
         self.slider_view.update_marker_positions()
@@ -467,10 +531,10 @@ class GuitarPracticeApp:
         # Resume playback if it was playing
         if was_playing:
             self.play_current()
-            formatted_time = self.section_panel.format_time(start_time)
+            formatted_time = SliderTimeUtils.format_time(start_time)
             self.sts.set(f"Rewound and playing from {formatted_time}")
         else:
-            formatted_time = self.section_panel.format_time(start_time)
+            formatted_time = SliderTimeUtils.format_time(start_time)
             self.sts.set(f"Rewound to {formatted_time} (paused)")
     
     def open_midi_settings(self):
@@ -538,7 +602,7 @@ class GuitarPracticeApp:
     def on_closing(self):
         """Handle window close."""
         if self.eng.is_playing():
-            self.eng.stop()
+            self.eng.pause()
             
         # Stop MIDI controller if active
         if hasattr(self, 'midi_controller') and self.midi_controller is not None:

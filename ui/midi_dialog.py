@@ -11,7 +11,7 @@ class MidiSettingsDialog:
         
         # Create a new Toplevel window
         self.dialog = tk.Toplevel(parent)
-        self.dialog.title("MIDI Controller Settings")
+        # self.dialog.title("MIDI Controller Settings")
         self.dialog.geometry("450x400")
         self.dialog.minsize(400, 350)
         self.dialog.transient(parent)  # Set to be on top of the parent window

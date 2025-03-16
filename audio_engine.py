@@ -13,6 +13,8 @@ import pyrubberband as pyrb
 @dataclass
 class Section:
     name: str
+    muted: bool
+    level: float
     start_time: float
     end_time: float
 
@@ -22,6 +24,7 @@ class SongConfig:
     path: str
     bpm: float
     sections: List[Section]
+    current_section: str
 
 class AudioEngine:
     def __init__(self):
@@ -58,6 +61,7 @@ class AudioEngine:
     # -------------------------------------------------------
     def set_start_position(self, pos: float):
         """Next playback will begin from 'pos' seconds."""
+        print("eng: set_start_position: " + str(pos))
         self._start_position = pos
 
     def get_start_position(self) -> float:
@@ -85,6 +89,17 @@ class AudioEngine:
                os.path.exists(os.path.join(base_folder, folder, 'config.json'))
         ]
     
+    def find_section(self, section_name):
+        target = None
+        for s in self.current_song.sections:
+            if s.name == section_name:
+                target = s
+                break
+        return target
+        # if not target:
+        #     raise ValueError(f"Section '{section_name}' not found.")
+        # self.current_section = target
+
     def load_song(self, song_folder: str) -> SongConfig:
         config_path = os.path.join(song_folder, "config.json")
         if not os.path.exists(config_path):
@@ -95,13 +110,14 @@ class AudioEngine:
         
         sections = []
         for sec in config_data.get('sections', []):
-            sections.append(Section(sec['name'], sec['start_time'], sec['end_time']))
+            sections.append(Section(sec['name'], sec.get("muted", False), sec.get("level", 1.0), sec['start_time'], sec['end_time']))
         
         song_cfg = SongConfig(
             title=config_data.get('title', os.path.basename(song_folder)),
             path=song_folder,
             bpm=config_data.get('bpm', 120.0),
-            sections=sections
+            sections=sections,
+            current_section=config_data.get("current_section", "Full Song")
         )
         
         # Clear old stems
@@ -121,13 +137,18 @@ class AudioEngine:
             raise FileNotFoundError(f"No audio files in {song_folder}")
         
         self.current_song = song_cfg
-        self.current_section = None
+        self.current_section = self.find_section( song_cfg.current_section )
         self.muted_stems = set()
         
         # Reset positions
         self._start_position = 0.0
         self._current_position = 0.0
-        
+
+        if self.current_section:
+            print("loaded: " + str(self.current_section.start_time))
+            self._start_position = self.current_section.start_time
+            self._current_position = self.current_section.start_time
+            
         return song_cfg
     
     def get_stem_names(self) -> List[str]:
@@ -150,11 +171,11 @@ class AudioEngine:
             
             # Identify target section
             if section_name:
-                target = None
-                for s in self.current_song.sections:
-                    if s.name == section_name:
-                        target = s
-                        break
+                target = self.find_section(section_name)
+                # for s in self.current_song.sections:
+                #     if s.name == section_name:
+                #         target = s
+                #         break
                 if not target:
                     raise ValueError(f"Section '{section_name}' not found.")
                 self.current_section = target
@@ -163,11 +184,15 @@ class AudioEngine:
                 max_len = max(len(x) for x in self.stems.values())
                 self.current_section = Section(
                     name="Full Song",
+                    muted=False,
+                    level=1.0,
                     start_time=0.0,
                     end_time=max_len / self.stem_srs
                 )
             
             # If the user start_position is before the section's start, clamp
+            print("Playing init: cur=" + str(self._current_position) + " start=" + str(self._start_position))
+
             start_sec = self._start_position
             section_start = self.current_section.start_time
             
@@ -178,19 +203,15 @@ class AudioEngine:
             self._current_position = start_sec
             
             self.playing = True
+            print("Playing: cur=" + str(self._current_position))
             # Start worker thread
             self.playback_thread = threading.Thread(target=self._playback_worker)
             self.playback_thread.daemon = True
             self.playback_thread.start()
 
     def stop(self):
-        """Fully stop playback if it's running."""
-        if self.playing:
-            self.stop_event.set()
-            if self.playback_thread and self.playback_thread.is_alive():
-                self.playback_thread.join(timeout=1.0)
-        self.playing = False
-
+        self.pause()
+        
     def pause(self):
         """Pause = Stop plus store the last-known position in _start_position."""
         if self.playing:
@@ -199,8 +220,8 @@ class AudioEngine:
                 self.playback_thread.join(timeout=1.0)
             self.playing = False
         
-        # Now we preserve the current_position
-        self._start_position = self._current_position
+            # Now we preserve the current_position
+            self._start_position = self._current_position
 
     def set_count_in(self, enabled: bool):
         self.count_in = enabled

@@ -5,7 +5,7 @@ class StemsPanel(ttk.LabelFrame):
     """Panel for controlling the visibility of individual audio stems."""
     
     def __init__(self, parent, app):
-        super().__init__(parent, text="Stems", padding="12")
+        super().__init__(parent, padding="0")
         self.app = app
         
         # Stem state variables dictionary
@@ -73,11 +73,9 @@ class StemsPanel(ttk.LabelFrame):
             var = tk.BooleanVar(value=True)
             self.stv[stem] = var
             
-            print("mut: " + str(self.app.settings.mut))
             # Check if stem is already muted
             if hasattr(self.app, 'eng') and self.app.eng.current_song:
                 song_title = self.app.eng.current_song.title
-                print("Song title: " + song_title + " " + str(song_title in self.app.settings.mut) )
                 if song_title in self.app.settings.mut and stem in self.app.settings.mut[song_title]:
                     var.set(False)
             

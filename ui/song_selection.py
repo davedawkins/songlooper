@@ -7,7 +7,7 @@ class SongSelectionPanel(ttk.LabelFrame):
     """Panel for selecting and loading songs."""
     
     def __init__(self, parent, app):
-        super().__init__(parent, text="Song Selection", padding="10")
+        super().__init__(parent, padding="10")
         self.app = app
         
         # Setup internal layout
@@ -21,7 +21,7 @@ class SongSelectionPanel(ttk.LabelFrame):
         self.scb.grid(row=0, column=1, sticky=tk.W+tk.E, padx=(0, 5))
         self.scb.bind("<<ComboboxSelected>>", self.on_song_selected)
         
-        ttk.Button(self, text="Load Song", command=self.load_selected_song).grid(row=0, column=2, padx=5)
+        # ttk.Button(self, text="Load Song", command=self.load_selected_song).grid(row=0, column=2, padx=5)
         ttk.Button(self, text="Refresh List", command=self.refresh_song_list).grid(row=0, column=3)
         
         # Configure grid column weights for resizing
@@ -31,7 +31,9 @@ class SongSelectionPanel(ttk.LabelFrame):
         """Handle song selection from dropdown."""
         self.app.sts.set(f"Selected: {self.scb.get()}")
         self.app.settings.save_settings(self.app)
-    
+        self.app.root.after(0, self.load_selected_song)
+        # self.load_selected_song()
+
     def refresh_song_list(self):
         """Refresh the list of available songs."""
         if not self.app.dir or not os.path.isdir(self.app.dir):
@@ -93,14 +95,17 @@ class SongSelectionPanel(ttk.LabelFrame):
     # In SongSelectionPanel class, modify the load_selected_song method
     def load_selected_song(self):
         """Load the currently selected song."""
-        if not self.scb.get():
+
+        song_name = self.scb.get()
+
+        if not song_name:
             messagebox.showerror("Error", "Please select a song")
             return
         
-        song_folder = os.path.join(self.app.dir, self.scb.get())
+        song_folder = os.path.join(self.app.dir,song_name)
         try:
             # Force stop any current playback
-            self.app.eng.stop()
+            self.app.eng.pause()
             self.app.set_play_button_text(False)
             
             # Reset speed to 1.0
@@ -131,7 +136,7 @@ class SongSelectionPanel(ttk.LabelFrame):
                     end_time = self.app.eng.get_total_duration()
             
             # Set section name and times
-            self.app.snm.set(self.app.section_panel.xcb.get())
+            self.app.snm.set(song_config.current_section)
             self.app.stt.set(round(start_time, 2))
             self.app.ent.set(round(end_time, 2))
             
@@ -143,8 +148,9 @@ class SongSelectionPanel(ttk.LabelFrame):
             
             # Slider range - always start in full song view
             total_duration = self.app.eng.get_total_duration()
-            # Update canvas directly instead of using the slider (which is now removed)
-            self.app.slider_view.update_time_label(0, total_duration)
+            self.app.dur.set( total_duration )
+
+            # self.app.slider_view.update_time_label(0, total_duration)
             
             # Force resize of the slider canvas now that stems are loaded
             self.app.slider_view.resize_canvas_if_needed()
@@ -164,8 +170,10 @@ class SongSelectionPanel(ttk.LabelFrame):
                         self.app.stems_panel.stv[stem_name].set(False)
             
             # Reset to 0
-            self.app.eng.set_start_position(0.0)
+            # self.app.eng.set_start_position(0.0)
             
             self.app.settings.save_settings(self.app)
+            self.app.songName.set( song_name )
+
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load song: {str(e)}")

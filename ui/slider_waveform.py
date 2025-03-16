@@ -1,6 +1,13 @@
 """Waveform drawing functionality for the slider view with individual stem displays."""
 
 import numpy as np
+from ui.slider_time_utils import SliderTimeUtils
+import re
+
+
+def short_name(text):
+    parts = re.split(r"[ _-]+", text)
+    return parts[len(parts)-1] if len(parts) > 1 else text
 
 class SliderWaveform:
     """Handles drawing and rendering of individual audio waveforms for each stem in the slider."""
@@ -8,6 +15,8 @@ class SliderWaveform:
     def __init__(self, slider_view):
         """Initialize with reference to the parent SliderView."""
         self.slider_view = slider_view
+        self.app = slider_view.app
+        
         # Constants for layout
         self.LABEL_WIDTH = 180
         self.TOP_MARGIN = 50
@@ -78,10 +87,10 @@ class SliderWaveform:
             
             # Draw stem label
             # Truncate stem name if too long
-            display_name = stem_name
+            display_name = short_name(stem_name)
             if len(display_name) > 20:
                 display_name = display_name[:18] + "..."
-                
+
             self.slider_view.canvas.create_text(
                 10, stem_center,
                 text=display_name, anchor="w",
@@ -105,10 +114,10 @@ class SliderWaveform:
                 audio_data = audio_data[:, 0]
                 
             # Determine visible range based on section view mode
-            if self.slider_view.svm.get():
+            if self.app.svm.get():
                 # In section view, only show the section part of the waveform
-                start_time = self.slider_view.time_utils.parse_time(self.slider_view.stt.get())
-                end_time = self.slider_view.time_utils.parse_time(self.slider_view.ent.get())
+                start_time = SliderTimeUtils.parse_time(self.app.stt.get())
+                end_time = SliderTimeUtils.parse_time(self.app.ent.get())
                 
                 if start_time is None or end_time is None:
                     continue

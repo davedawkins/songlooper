@@ -5,7 +5,7 @@ class MidiSettingsPanel(ttk.LabelFrame):
     """Panel for configuring MIDI device input and controls."""
     
     def __init__(self, parent, app):
-        super().__init__(parent, text="MIDI Controller Settings", padding="10")
+        super().__init__(parent, padding="0")
         self.app = app
         
         # MIDI status variable

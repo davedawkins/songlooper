@@ -1,7 +1,7 @@
 {
   "songs_folder": "/Users/david/projects/Songs",
-  "current_song": "NoQuarterKv",
-  "current_section": "Full Song",
+  "current_song": "CustardPie",
+  "current_section": "Full Solo",
   "speed": 1.0,
   "loop_delay": 0.5,
   "loop_playback": true,
@@ -19,7 +19,7 @@
   "midi_settings": {
     "enabled": null,
     "device": "MPK mini 3",
-    "play_pause_note": 60,
+    "play_pause_note": 48,
     "rewind_note": 62,
     "next_section_note": 64,
     "prev_section_note": 65

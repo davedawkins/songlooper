@@ -7,6 +7,7 @@ from ui.slider_end_marker import EndMarker
 from ui.slider_position_marker import PositionMarker
 from ui.slider_canvas_manager import CanvasManager
 from ui.slider_marker_interaction_manager import MarkerInteractionManager
+from ui.slider_time_utils import SliderTimeUtils
 
 
 class SliderMarkers:
@@ -15,7 +16,8 @@ class SliderMarkers:
     def __init__(self, slider_view):
         """Initialize with reference to the parent SliderView."""
         self.slider_view = slider_view
-        
+        self.app = slider_view.app
+
         # State variables for marker dragging
         self.dragging_marker = None
         self.was_playing = False
@@ -72,11 +74,11 @@ class SliderMarkers:
         content_top, content_bottom = self.get_stem_vertical_bounds()
         
         # Fetch and parse current time values
-        start_time_str = self.slider_view.stt.get()
-        end_time_str = self.slider_view.ent.get()
-        start_time = self.slider_view.time_utils.parse_time(start_time_str) or 0.0
-        end_time = self.slider_view.time_utils.parse_time(end_time_str) or self.slider_view.app.eng.get_total_duration()
-        current_pos = self.slider_view.pos.get()
+        start_time_str = self.app.stt.get()
+        end_time_str = self.app.ent.get()
+        start_time = SliderTimeUtils.parse_time(start_time_str) or 0.0
+        end_time = SliderTimeUtils.parse_time(end_time_str) or self.slider_view.app.eng.get_total_duration()
+        current_pos = self.app.pos.get()
             
         # Calculate marker positions
         start_x = self.slider_view.time_utils.time_to_x(start_time)
@@ -123,13 +125,13 @@ class SliderMarkers:
             self.dragging_marker = marker_type
             
             # Pause playback if playing
-            if self.was_playing:
+            if self.was_playing and marker_type == "position":
                 self.slider_view.app.eng.pause()
         else:
             # Empty space was clicked - set position directly
             if self.was_playing:
                 self.slider_view.app.eng.pause()
-            self.slider_view.time_utils.update_position_from_x(event.x)
+            SliderTimeUtils.update_position_from_x(event.x)
     
     def on_canvas_drag(self, event):
         """Handle drag motion on canvas."""
