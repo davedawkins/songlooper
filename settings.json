@@ -1,10 +1,24 @@
 {
-  "songs_folder": "/Users/david/projects/songlooper/Songs",
-  "current_song": "PlaceYourHands",
+  "songs_folder": "/Users/david/projects/Songs",
+  "current_song": "CustardPie",
   "current_section": "Full Song",
-  "speed": 0.8,
+  "speed": 1.0,
   "loop_delay": 0.5,
   "loop_playback": true,
   "count_in": false,
-  "muted_stems_info": {}
+  "muted_stems_info": {
+    "CustardPie": [
+      "01 - Custard Pie - Other",
+      "01 - Custard Pie - Bass",
+      "01 - Custard Pie - Drums"
+    ]
+  },
+  "midi_settings": {
+    "enabled": null,
+    "device": "",
+    "play_pause_note": 60,
+    "rewind_note": 62,
+    "next_section_note": 64,
+    "prev_section_note": 65
+  }
 }

@@ -90,6 +90,7 @@ class SongSelectionPanel(ttk.LabelFrame):
         except Exception as e:
             print(f"Error creating default config: {str(e)}")
     
+    # In SongSelectionPanel class, modify the load_selected_song method
     def load_selected_song(self):
         """Load the currently selected song."""
         if not self.scb.get():
@@ -101,6 +102,9 @@ class SongSelectionPanel(ttk.LabelFrame):
             # Force stop any current playback
             self.app.eng.stop()
             self.app.set_play_button_text(False)
+            
+            # Reset speed to 1.0
+            self.app.spd.set(1.0)
             
             song_config = self.app.eng.load_song(song_folder)
             self.app.sts.set(f"Loaded: {song_config.title}")

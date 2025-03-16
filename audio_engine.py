@@ -49,6 +49,9 @@ class AudioEngine:
         
         # We track the actual playback position in real time:
         self._current_position = 0.0
+        
+        # Callback for when mute status changes
+        self.mute_status_change_callback = None
 
     # -------------------------------------------------------
     #   GETTERS / SETTERS
@@ -66,6 +69,10 @@ class AudioEngine:
 
     def is_playing(self) -> bool:
         return self.playing
+        
+    def set_mute_callback(self, callback):
+        """Set a callback function to be called when mute status changes."""
+        self.mute_status_change_callback = callback
 
     # -------------------------------------------------------
     #   SONG LOADING
@@ -236,10 +243,16 @@ class AudioEngine:
         
         if stem_name in self.muted_stems:
             self.muted_stems.remove(stem_name)
-            return False
+            is_muted = False
         else:
             self.muted_stems.add(stem_name)
-            return True
+            is_muted = True
+            
+        # Notify callback about the change if one is registered
+        if self.mute_status_change_callback:
+            self.mute_status_change_callback()
+            
+        return is_muted
 
     # -------------------------------------------------------
     #   DURATION
@@ -315,9 +328,48 @@ class AudioEngine:
                     mixed_section[:length_to_mix, :out_ch] += stretched[:length_to_mix, :out_ch]
             
             frames_consumed = 0
+            should_recompute = [False]  # Using list as mutable reference for the callback closure
             
             def callback(outdata, frames, time_info, status):
                 nonlocal frames_consumed, mixed_section
+                
+                # Check if we need to recompute the mix due to mute status change
+                if should_recompute[0]:
+                    should_recompute[0] = False  # Reset flag
+                    remaining_samples = len(mixed_section)
+                    if remaining_samples > 0:
+                        # Calculate current position in samples
+                        current_sample_pos = start_sample + int((frames_consumed / float(self.stem_srs)) * self.playback_speed * self.stem_srs)
+                        end_sample_pos = end_sample
+                        
+                        # Skip if we're outside of valid range
+                        if current_sample_pos >= end_sample_pos:
+                            return
+                        
+                        # Create a new mixed section from the current position
+                        new_mixed = np.zeros((remaining_samples, channels), dtype=np.float32)
+                        for stem_name, audio_data in self.stems.items():
+                            if stem_name in self.muted_stems:
+                                continue
+                            
+                            remaining_orig_samples = end_sample_pos - current_sample_pos
+                            if remaining_orig_samples <= 0:
+                                continue
+                                
+                            snippet = audio_data[current_sample_pos:end_sample_pos]
+                            stretched = self._time_stretch_section(stem_name, snippet, self.playback_speed)
+                            
+                            stretch_len = min(remaining_samples, len(stretched))
+                            if stretched.ndim == 1:
+                                for c in range(channels):
+                                    new_mixed[:stretch_len, c] += stretched[:stretch_len]
+                            else:
+                                out_ch = min(channels, stretched.shape[1])
+                                new_mixed[:stretch_len, :out_ch] += stretched[:stretch_len, :out_ch]
+                        
+                        # Replace the remaining part of the mixed section
+                        mixed_section = new_mixed
+                
                 if status:
                     print(status)
                 
@@ -335,13 +387,25 @@ class AudioEngine:
                 played_sec = (frames_consumed / float(self.stem_srs)) * self.playback_speed
                 self._current_position = start_sec + played_sec
             
-            with sd.OutputStream(samplerate=self.stem_srs,
-                                 channels=channels,
-                                 blocksize=1024,
-                                 dtype=np.float32,
-                                 callback=callback):
-                while len(mixed_section) > 0 and not self.stop_event.is_set():
-                    time.sleep(0.05)
+            # Define mute status change handler
+            def handle_mute_change():
+                should_recompute[0] = True
+            
+            # Set callback for mute changes
+            old_callback = self.mute_status_change_callback
+            self.mute_status_change_callback = handle_mute_change
+            
+            try:
+                with sd.OutputStream(samplerate=self.stem_srs,
+                                    channels=channels,
+                                    blocksize=1024,
+                                    dtype=np.float32,
+                                    callback=callback):
+                    while len(mixed_section) > 0 and not self.stop_event.is_set():
+                        time.sleep(0.05)
+            finally:
+                # Restore the original callback
+                self.mute_status_change_callback = old_callback
             
             if self.stop_event.is_set():
                 break

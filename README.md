@@ -71,3 +71,37 @@ With this modular structure, you can now more easily test individual components:
 3. Test component boundaries and interactions
 
 This refactoring positions your application for easier maintenance and enhancement moving forward, especially when you want to work on specific parts of the UI without affecting the core functionality.
+
+
+guitar_practice_app/
+├── main.py                  # Application entry point
+├── models/                  # Data models and state
+│   ├── __init__.py
+│   ├── app_state.py         # Central application state
+│   └── audio_model.py       # Audio data model
+├── views/                   # UI components
+│   ├── __init__.py
+│   ├── main_window.py       # Main application window
+│   ├── song_view.py         # Song selection view
+│   ├── section_view.py      # Section control view
+│   ├── playback_view.py     # Playback controls view
+│   ├── waveform_view.py     # Waveform visualization
+│   ├── transport_view.py    # Transport controls
+│   ├── stems_view.py        # Stems control view
+│   └── midi_view.py         # MIDI control view
+├── controllers/             # Business logic
+│   ├── __init__.py
+│   ├── app_controller.py    # Main application controller
+│   ├── audio_controller.py  # Audio engine wrapper
+│   ├── section_controller.py # Section management
+│   └── midi_controller.py   # MIDI input handling
+├── commands/                # Command pattern implementation
+│   ├── __init__.py
+│   ├── command_manager.py   # Central command registry
+│   ├── playback_commands.py # Playback-related commands
+│   └── section_commands.py  # Section-related commands
+└── utils/                   # Utility functions
+    ├── __init__.py
+    ├── settings.py          # Settings management
+    ├── time_format.py       # Time formatting utilities
+    └── keyboard_bindings.py # Keyboard shortcut handling

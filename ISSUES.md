@@ -1,0 +1,6 @@
+- All times in 00:00.00 format
+- Show waveform
+- Pause playing while dragging, resume on release
+- Stack stems vertically
+- Allow mute / unmute while playing
+- Reset Speed to 1.0 when loading new song
