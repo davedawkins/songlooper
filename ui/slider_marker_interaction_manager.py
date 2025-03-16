@@ -1,4 +1,3 @@
-
 class MarkerInteractionManager:
     """Manages interactions with markers through mouse events."""
     
@@ -12,8 +11,15 @@ class MarkerInteractionManager:
         canvas_height = self.slider_view.canvas.winfo_height()
         
         # Define Y ranges for different markers
-        top_region = 15  # Top area for start/end markers
-        bottom_region = canvas_height - 15  # Bottom area for position marker
+        top_region = 50  # Top area for start/end markers
+        bottom_region = canvas_height - 50  # Bottom area for position marker
+        
+        # Get label width
+        label_width = self.slider_view.waveform.LABEL_WIDTH
+        
+        # Ignore clicks in the label area
+        if event.x <= label_width:
+            return None
         
         # Items under cursor
         items = self.slider_view.canvas.find_closest(event.x, event.y)
@@ -36,7 +42,7 @@ class MarkerInteractionManager:
                     return "position"
         
         else:
-            # Mid region - check all markers but with priority
+            # Mid region - check for marker lines that span through all stems
             for item in items:
                 tags = self.slider_view.canvas.gettags(item)
                 if "position_marker" in tags:
@@ -51,5 +57,8 @@ class MarkerInteractionManager:
     
     def constrain_x_to_canvas(self, x):
         """Constrain x coordinate to valid canvas range."""
+        # Account for stem labels width
         canvas_width = self.slider_view.canvas.winfo_width()
-        return max(10, min(x, canvas_width - 10))
+        label_width = self.slider_view.waveform.LABEL_WIDTH
+        
+        return max(label_width + 10, min(x, canvas_width - 10))

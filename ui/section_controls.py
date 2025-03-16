@@ -257,7 +257,7 @@ class SectionControlPanel(ttk.LabelFrame):
         # Create config dict
         config = {
             "title": self.app.eng.current_song.title,
-            "bpm": self.app.eng.current_song.bpm,
+            "bpm": int(self.app.bpm.get()),
             "sections": [
                 {
                     "name": s.name,

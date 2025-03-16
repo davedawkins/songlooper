@@ -1,4 +1,3 @@
-
 class EndMarker:
     """Represents and manages the section end marker in the slider."""
     
@@ -8,21 +7,30 @@ class EndMarker:
     
     def draw(self, canvas, x, content_top, content_bottom):
         """Draw the end marker at the specified position."""
-        # Marker properties
-        triangle_width = 10
-        triangle_height = 8
+        # Calculate actual vertical bounds for stems
+        num_stems = len(self.slider_view.app.eng.stems) if hasattr(self.slider_view.app.eng, 'stems') else 0
+        if num_stems == 0:
+            return
+            
+        # Get label width and ensure x is after label
+        label_width = self.slider_view.waveform.LABEL_WIDTH
+        x = max(label_width, x)
         
-        # Draw end marker line
+        # Marker properties
+        triangle_width = 12
+        triangle_height = 10
+        
+        # Draw end marker line - expand slightly beyond waveform area
         canvas.create_line(
-            x, content_top, x, content_bottom, 
+            x, content_top - 5, x, content_bottom + 5, 
             fill="red", width=1, tags="end_marker"
         )
         
-        # Draw end marker triangle
+        # Draw end marker triangle OUTSIDE the waveform area (above it)
         canvas.create_polygon(
-            x, content_top,
-            x - triangle_width/2, content_top - triangle_height,
-            x + triangle_width/2, content_top - triangle_height,
+            x, content_top - 5,
+            x - triangle_width/2, content_top - 5 - triangle_height,
+            x + triangle_width/2, content_top - 5 - triangle_height,
             fill="red", outline="black", width=1, tags="end_marker"
         )
     
@@ -31,8 +39,8 @@ class EndMarker:
         # Prevent end marker from going before start marker
         start_time = self.slider_view.time_utils.parse_time(self.slider_view.stt.get())
         start_x = self.slider_view.time_utils.time_to_x(start_time)
-        if x <= start_x + 15:
-            x = start_x + 15
+        if x <= start_x + 20:
+            x = start_x + 20
             
         # Update end time
         new_time = self.slider_view.time_utils.x_to_time(x)
@@ -47,4 +55,3 @@ class EndMarker:
             self.slider_view.app.play_current()
         
         self.slider_view.app.sts.set(f"Section end: {self.slider_view.time_utils.format_time(end_time)}")
-

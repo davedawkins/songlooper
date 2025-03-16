@@ -1,15 +1,19 @@
 {
   "songs_folder": "/Users/david/projects/Songs",
-  "current_song": "CustardPie",
+  "current_song": "NoQuarterKv",
   "current_section": "Full Song",
   "speed": 1.0,
   "loop_delay": 0.5,
   "loop_playback": true,
-  "count_in": false,
+  "count_in": true,
   "muted_stems_info": {
     "CustardPie": [
-      "01 - Custard Pie - Other",
-      "01 - Custard Pie - Bass"
+      "01 - Custard Pie - Bass",
+      "01 - Custard Pie - Drums"
+    ],
+    "NoQuarterKv": [
+      "LZNQ_Full",
+      "LZNQ_Click"
     ]
   },
   "midi_settings": {

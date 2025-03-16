@@ -13,8 +13,8 @@ class PlaybackControlPanel(ttk.Frame):
     
     def setup_ui(self):
         """Set up the playback controls UI."""
-        # BPM variable
-        self.bpm = tk.StringVar(value="120")
+        # # BPM variable
+        # self.bpm = tk.StringVar(value="120")
         
         # Playback controls in a frame
         self.pbf = ttk.Frame(self)
@@ -41,13 +41,13 @@ class PlaybackControlPanel(ttk.Frame):
         cin.pack(side=tk.LEFT, padx=(0, 15))
         
         ttk.Label(self.pbf, text="BPM:").pack(side=tk.LEFT, padx=(0, 5))
-        ttk.Entry(self.pbf, textvariable=self.bpm, width=5, state="readonly").pack(side=tk.LEFT)
-    
+        ttk.Entry(self.pbf, textvariable=self.app.bpm, width=5).pack(side=tk.LEFT)
+
     def toggle_count_in(self):
         """Toggle count-in feature."""
         self.app.eng.set_count_in(self.app.cin.get())
         self.app.settings.save_settings(self.app)
     
-    def update_bpm(self, bpm_value):
-        """Update the BPM display."""
-        self.bpm.set(bpm_value)
+    # def update_bpm(self, bpm_value):
+    #     """Update the BPM display."""
+    #     self.bpm.set(bpm_value)

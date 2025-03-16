@@ -35,66 +35,21 @@ class SettingsManager:
         app.dir = data.get("songs_folder", "")
         app.fdr.set(app.dir)
         
-        current_song = data.get("current_song", "")
-        if app.dir and os.path.isdir(app.dir):
-            app.song_panel.refresh_song_list()
-            if current_song in app.song_panel.scb["values"]:
-                app.song_panel.scb.set(current_song)
-                app.sts.set(f"Selected: {current_song}")
-        
-        if app.song_panel.scb.get():
-            app.song_panel.load_selected_song()
-        
+        self.current_song = data.get("current_song", "")
         app.spd.set(data.get("speed", 1.0))
         app.dly.set(data.get("loop_delay", 0.5))
         app.lop.set(data.get("loop_playback", True))
         app.cin.set(data.get("count_in", False))
         
         self.mut = data.get("muted_stems_info", {})
+        print("Settings: mut " + str(self.mut))
+
         self.pss = data.get("current_section", None)
         
         # Load MIDI settings if available
-        midi_settings = data.get("midi_settings", {})
-        if midi_settings:
-            self.midi_settings = midi_settings
-            
-            # Apply MIDI settings if MIDI panel exists
-            if hasattr(app, 'midi_panel'):
-                app.midi_panel.midi_device.set(self.midi_settings.get("device", ""))
-                app.midi_panel.play_pause_note.set(str(self.midi_settings.get("play_pause_note", 60)))
-                app.midi_panel.rewind_note.set(str(self.midi_settings.get("rewind_note", 62)))
-                app.midi_panel.next_section_note.set(str(self.midi_settings.get("next_section_note", 64)))
-                app.midi_panel.prev_section_note.set(str(self.midi_settings.get("prev_section_note", 65)))
-                
-                # Apply the mappings
-                app.midi_panel.apply_mappings()
-                
-                # Enable MIDI if it was enabled
-                if self.midi_settings.get("enabled", False):
-                    app.root.after(1000, app.midi_panel.toggle_midi)  # Delay to ensure UI is ready
-        
-        # Load section times in mm:ss.c format
-        # This must happen after song is loaded so we have valid section data
-        if hasattr(app, 'section_panel') and app.eng.current_song:
-            section_name = data.get("current_section", "Full Song")
-            if section_name == "Full Song":
-                start_time = 0.0
-                end_time = app.eng.get_total_duration()
-            else:
-                # Find section with matching name
-                for s in app.eng.current_song.sections:
-                    if s.name == section_name:
-                        start_time = s.start_time
-                        end_time = s.end_time
-                        break
-                else:
-                    # Default if section not found
-                    start_time = 0.0
-                    end_time = app.eng.get_total_duration()
-            
-            # Format times for display
-            app.stt.set(app.section_panel.format_time(start_time))
-            app.ent.set(app.section_panel.format_time(end_time))
+        self.midi_settings = data.get("midi_settings", {})
+
+        self.section_name = data.get("current_section", "Full Song")
     
     def save_settings(self, app):
         """Save app settings to file."""

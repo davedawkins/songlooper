@@ -16,8 +16,8 @@ class GuitarPracticeApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Guitar Practice Tool")
-        self.root.geometry("800x600")
-        self.root.minsize(600, 800)
+        self.root.geometry("1200x1200")
+        self.root.minsize(1200, 1200)
         
         # --- Engine & State ---
         self.eng = AudioEngine()
@@ -40,7 +40,8 @@ class GuitarPracticeApp:
         self.svm = tk.BooleanVar(value=False)  # Section view mode
         self.stt = tk.StringVar(value="00:00.0")  # Start time
         self.ent = tk.StringVar(value="00:00.0")  # End time
-        
+        self.bpm = tk.StringVar(value="120") #  BPM
+
         # Status variable
         self.sts = tk.StringVar(value="Ready")
         
@@ -48,6 +49,8 @@ class GuitarPracticeApp:
         self.settings = SettingsManager()
         # Store reference to app in settings manager for MIDI settings
         self.settings.app = self
+        # Load settings and start position updates
+        self.load_settings()
         
         # Build the UI
         self.setup_ui()
@@ -59,11 +62,16 @@ class GuitarPracticeApp:
         self.root.bind("<Configure>", self.on_window_resize)
         
         # Load settings and start position updates
-        self.load_settings()
+        self.apply_settings()
         
         # Set up the mute status change callback in the audio engine
         self.eng.set_mute_callback(self.on_mute_status_change)
         
+        self.bpm.trace_add("write", lambda *args:self.section_panel.save_song_config())
+
+    def save_settings(self):
+        self.settings.save_settings(self)
+
     def setup_ui(self):
         """Build the main UI frame and all components."""
         # Main frame
@@ -88,7 +96,7 @@ class GuitarPracticeApp:
         
         # Slider with markers
         self.slider_view = SliderView(self.frm, self)
-        self.slider_view.pack(fill=tk.X, pady=(0, 10))
+        self.slider_view.pack(fill=tk.BOTH, pady=(0, 10))
         
         # Transport buttons
         self.setup_transport()
@@ -272,6 +280,63 @@ class GuitarPracticeApp:
     def load_settings(self):
         """Load settings and start position updates."""
         self.settings.load_settings(self)
+
+    def apply_settings(self):
+        app = self
+        current_song = self.settings.current_song
+
+        if app.dir and os.path.isdir(app.dir):
+            app.song_panel.refresh_song_list()
+            if current_song in app.song_panel.scb["values"]:
+                app.song_panel.scb.set(current_song)
+                app.sts.set(f"Selected: {current_song}")
+        
+        if app.song_panel.scb.get():
+            app.song_panel.load_selected_song()
+        
+        midi_settings = self.settings.midi_settings
+        if midi_settings:
+            self.midi_settings = midi_settings
+            
+            # Apply MIDI settings if MIDI panel exists
+            if hasattr(app, 'midi_panel'):
+                app.midi_panel.midi_device.set(self.midi_settings.get("device", ""))
+                app.midi_panel.play_pause_note.set(str(self.midi_settings.get("play_pause_note", 60)))
+                app.midi_panel.rewind_note.set(str(self.midi_settings.get("rewind_note", 62)))
+                app.midi_panel.next_section_note.set(str(self.midi_settings.get("next_section_note", 64)))
+                app.midi_panel.prev_section_note.set(str(self.midi_settings.get("prev_section_note", 65)))
+                
+                # Apply the mappings
+                app.midi_panel.apply_mappings()
+                
+                # Enable MIDI if it was enabled
+                if self.midi_settings.get("enabled", False):
+                    app.root.after(1000, app.midi_panel.toggle_midi)  # Delay to ensure UI is ready
+        
+
+        # Load section times in mm:ss.c format
+        # This must happen after song is loaded so we have valid section data
+        if hasattr(app, 'section_panel') and app.eng.current_song:
+            section_name = app.settings.section_name
+            if section_name == "Full Song":
+                start_time = 0.0
+                end_time = app.eng.get_total_duration()
+            else:
+                # Find section with matching name
+                for s in app.eng.current_song.sections:
+                    if s.name == section_name:
+                        start_time = s.start_time
+                        end_time = s.end_time
+                        break
+                else:
+                    # Default if section not found
+                    start_time = 0.0
+                    end_time = app.eng.get_total_duration()
+            
+            # Format times for display
+            app.stt.set(app.section_panel.format_time(start_time))
+            app.ent.set(app.section_panel.format_time(end_time))
+
         self.update_song_position()
     
     def on_window_resize(self, event):

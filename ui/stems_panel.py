@@ -73,9 +73,11 @@ class StemsPanel(ttk.LabelFrame):
             var = tk.BooleanVar(value=True)
             self.stv[stem] = var
             
+            print("mut: " + str(self.app.settings.mut))
             # Check if stem is already muted
             if hasattr(self.app, 'eng') and self.app.eng.current_song:
                 song_title = self.app.eng.current_song.title
+                print("Song title: " + song_title + " " + str(song_title in self.app.settings.mut) )
                 if song_title in self.app.settings.mut and stem in self.app.settings.mut[song_title]:
                     var.set(False)
             

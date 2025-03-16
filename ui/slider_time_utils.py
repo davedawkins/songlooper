@@ -52,6 +52,7 @@ class SliderTimeUtils:
     def time_to_x(self, time):
         """Convert time value to x coordinate."""
         canvas_width = self.slider_view.canvas.winfo_width()
+        label_width = self.slider_view.waveform.LABEL_WIDTH
         
         if self.slider_view.svm.get():
             # Section view
@@ -61,20 +62,27 @@ class SliderTimeUtils:
             
             position_ratio = (time - start_time) / section_range
             position_ratio = max(0, min(1, position_ratio))
-            # Add the left margin (10px)
-            return 10 + position_ratio * (canvas_width - 20)
+            # Scale to usable area (after label width)
+            usable_width = max(1, canvas_width - label_width - 20)
+            return label_width + 10 + position_ratio * usable_width
         else:
             # Full song view
             total_duration = max(0.1, self.slider_view.app.eng.get_total_duration())
             
             position_ratio = time / total_duration
             position_ratio = max(0, min(1, position_ratio))
-            # Add the left margin (10px)
-            return 10 + position_ratio * (canvas_width - 20)
+            # Scale to usable area (after label width)
+            usable_width = max(1, canvas_width - label_width - 20)
+            return label_width + 10 + position_ratio * usable_width
     
     def x_to_time(self, x):
         """Convert x coordinate to time value."""
         canvas_width = self.slider_view.canvas.winfo_width()
+        label_width = self.slider_view.waveform.LABEL_WIDTH
+        
+        # Only consider clicks after the label area
+        if x <= label_width:
+            x = label_width + 1
         
         if self.slider_view.svm.get():
             # Section view
@@ -82,22 +90,27 @@ class SliderTimeUtils:
             end_time = self.parse_time(self.slider_view.ent.get())
             section_range = max(0.1, end_time - start_time)
             
-            # Adjust for the padding (10px on each side)
-            usable_width = max(1, canvas_width - 20)
-            position_ratio = max(0, min(1, (x - 10) / usable_width))
+            # Adjust for the padding and label width
+            usable_width = max(1, canvas_width - label_width - 20)
+            position_ratio = max(0, min(1, (x - label_width - 10) / usable_width))
             return start_time + position_ratio * section_range
         else:
             # Full song view
             total_duration = max(0.1, self.slider_view.app.eng.get_total_duration())
             
-            # Adjust for the padding (10px on each side)
-            usable_width = max(1, canvas_width - 20)
-            position_ratio = max(0, min(1, (x - 10) / usable_width))
+            # Adjust for the padding and label width
+            usable_width = max(1, canvas_width - label_width - 20)
+            position_ratio = max(0, min(1, (x - label_width - 10) / usable_width))
             return position_ratio * total_duration
     
     def update_position_from_x(self, x):
         """Update position based on x coordinate."""
         if not self.slider_view.app.eng.current_song:
+            return
+            
+        # Only consider clicks after the label area
+        label_width = self.slider_view.waveform.LABEL_WIDTH
+        if x <= label_width:
             return
             
         # Calculate time at this x position

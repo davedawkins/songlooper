@@ -89,7 +89,7 @@ class SongSelectionPanel(ttk.LabelFrame):
             print(f"Created default config for {title}")
         except Exception as e:
             print(f"Error creating default config: {str(e)}")
-    
+
     # In SongSelectionPanel class, modify the load_selected_song method
     def load_selected_song(self):
         """Load the currently selected song."""
@@ -110,7 +110,8 @@ class SongSelectionPanel(ttk.LabelFrame):
             self.app.sts.set(f"Loaded: {song_config.title}")
             
             # BPM (pass to playback panel)
-            self.app.playback_panel.update_bpm(str(int(song_config.bpm)))
+            # self.app.playback_panel.update_bpm(str(int(song_config.bpm)))
+            self.app.bpm.set(str(int(song_config.bpm)))
             
             # Sections
             self.app.section_panel.update_section_combobox()
@@ -144,6 +145,15 @@ class SongSelectionPanel(ttk.LabelFrame):
             total_duration = self.app.eng.get_total_duration()
             # Update canvas directly instead of using the slider (which is now removed)
             self.app.slider_view.update_time_label(0, total_duration)
+            
+            # Force resize of the slider canvas now that stems are loaded
+            self.app.slider_view.resize_canvas_if_needed()
+            # Schedule multiple resize calls after UI updates with increasing delays
+            # to ensure it takes effect even if some UI operations are slow
+            self.app.root.after(100, self.app.slider_view.resize_canvas_if_needed)
+            self.app.root.after(300, self.app.slider_view.resize_canvas_if_needed)
+            self.app.root.after(500, self.app.slider_view.resize_canvas_if_needed)
+            
             self.app.slider_view.update_marker_positions()
             
             # Restore muted stems
