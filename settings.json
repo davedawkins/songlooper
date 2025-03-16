@@ -9,13 +9,12 @@
   "muted_stems_info": {
     "CustardPie": [
       "01 - Custard Pie - Other",
-      "01 - Custard Pie - Bass",
-      "01 - Custard Pie - Drums"
+      "01 - Custard Pie - Bass"
     ]
   },
   "midi_settings": {
-    "enabled": null,
-    "device": "",
+    "enabled": true,
+    "device": "MPK mini 3",
     "play_pause_note": 60,
     "rewind_note": 62,
     "next_section_note": 64,
