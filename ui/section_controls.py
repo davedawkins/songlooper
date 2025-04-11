@@ -12,8 +12,17 @@ class SectionControlPanel(ttk.LabelFrame):
         super().__init__(parent, padding="0")
         self.app = app
         
+        # Local StringVars for editing time fields
+        self.local_stt = tk.StringVar()
+        self.local_ent = tk.StringVar()
+        
         # Set up the UI
         self.setup_ui()
+        
+        # Sync local vars initially and on app var changes (if not focused)
+        self._sync_local_times_from_app()
+        self.app.stt.trace_add("write", self._on_app_time_var_changed)
+        self.app.ent.trace_add("write", self._on_app_time_var_changed)
     
     def setup_ui(self):
         """Set up the section control UI."""
@@ -21,6 +30,9 @@ class SectionControlPanel(ttk.LabelFrame):
         self.columnconfigure(1, weight=1)
         self.columnconfigure(3, weight=2)
         
+        self.nameField = tk.StringVar()
+        self.app.snm.trace_add( "write", lambda *arg: self.nameField.set( self.app.snm.get() ) )
+
         # Row 0: Section selection and name
         ttk.Label(self, text="Section:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
         self.xcb = ttk.Combobox(self, state="readonly", width=20)
@@ -28,21 +40,23 @@ class SectionControlPanel(ttk.LabelFrame):
         self.xcb.bind("<<ComboboxSelected>>", self.on_section_selected)
         
         ttk.Label(self, text="Name:").grid(row=0, column=3, sticky=tk.W, padx=(15, 5))
-        self.nme = ttk.Entry(self, textvariable=self.app.snm, width=20)
+        self.nme = ttk.Entry(self, textvariable=self.nameField, width=20)
         self.nme.grid(row=0, column=4, columnspan=2, sticky=tk.W+tk.E, padx=(0, 5))
         
         # Row 1: Start and end times
         ttk.Label(self, text="Start:").grid(row=1, column=0, sticky=tk.W, padx=(0, 5), pady=5)
-        self.ste = ttk.Entry(self, textvariable=self.app.stt, width=12)
+        self.ste = ttk.Entry(self, textvariable=self.local_stt, width=12) # Bind to local var
         self.ste.grid(row=1, column=1, sticky=tk.W, padx=(0, 5), pady=5)
         self.ste.bind("<Return>", self.on_time_field_change)
         self.ste.bind("<FocusOut>", self.on_time_field_change)
+        self.ste.bind("<Escape>", self._restore_time_on_escape) # Add Escape binding
         
         ttk.Label(self, text="End:").grid(row=1, column=2, sticky=tk.W, padx=(5, 5), pady=5)
-        self.ene = ttk.Entry(self, textvariable=self.app.ent, width=12)
+        self.ene = ttk.Entry(self, textvariable=self.local_ent, width=12) # Bind to local var
         self.ene.grid(row=1, column=3, sticky=tk.W, padx=(0, 5), pady=5)
         self.ene.bind("<Return>", self.on_time_field_change)
         self.ene.bind("<FocusOut>", self.on_time_field_change)
+        self.ene.bind("<Escape>", self._restore_time_on_escape) # Add Escape binding
         
         # Row 2: Section management buttons
         self.mbf = ttk.Frame(self)
@@ -88,6 +102,7 @@ class SectionControlPanel(ttk.LabelFrame):
                 end_time = self.app.eng.get_total_duration()
         
         # Update time fields with formatted times
+        print("Start time (on_section_name_write):", start_time)
         self.app.stt.set(SliderTimeUtils.format_time(start_time))
         self.app.ent.set(SliderTimeUtils.format_time(end_time))
         
@@ -99,52 +114,55 @@ class SectionControlPanel(ttk.LabelFrame):
         # Save settings
         # self.app.settings.save_settings(self.app)
 
-    # Modify on_time_field_change method
     def on_time_field_change(self, event):
-        """Handle changes to time fields via UI interaction."""
+        """Handle changes to time fields via UI interaction (Commit Logic)."""
         try:
-            # Parse time strings
-            start_time_str = self.app.stt.get()
-            end_time_str = self.app.ent.get()
-            
-            start_time = SliderTimeUtils.parse_time(start_time_str)
-            end_time = SliderTimeUtils.parse_time(end_time_str)
+            # Parse time strings from LOCAL variables
+            start_time = SliderTimeUtils.parse_time(self.local_stt.get())
+            end_time = SliderTimeUtils.parse_time(self.local_ent.get())
             
             if start_time is None or end_time is None:
-                # If parsing failed, restore to previous valid values and return
-                self.app.stt.set(SliderTimeUtils.format_time(float(self.app.stt.get())))
-                self.app.ent.set(SliderTimeUtils.format_time(float(self.app.ent.get())))
+                # If parsing failed, show error and restore local fields from app vars
+                messagebox.showerror("Invalid Time", f"Invalid time format entered.\nPlease use mm:ss.xxx or seconds.")
+                self._sync_local_times_from_app()
                 return
             
             # Validate values
             total_duration = self.app.eng.get_total_duration()
             
-            if start_time < 0:
-                start_time = 0
+            # Clamp values
+            start_time = max(0, start_time)
+            end_time = min(total_duration, end_time)
             
-            if end_time > total_duration:
-                end_time = total_duration
-            
+            # Ensure start is before end, maintaining a small gap if possible
+            min_gap = 0.01 # Minimum time difference
             if start_time >= end_time:
-                # Keep at least 1 second gap
-                if end_time <= 1.0:
-                    start_time = 0
-                else:
-                    start_time = end_time - 1.0
-            
-            # Update the values with formatted times
+                if end_time > min_gap:
+                     start_time = max(0, end_time - min_gap)
+                else: # If end_time is very small, set start to 0 and end to min_gap
+                     start_time = 0
+                     end_time = min_gap
+                # Ensure end time doesn't exceed total duration after adjustment
+                end_time = min(total_duration, end_time)
+                start_time = min(start_time, end_time - min_gap) # Re-clamp start time
+
+            # Validation successful, COMMIT to application variables            
             self.app.stt.set(SliderTimeUtils.format_time(start_time))
             self.app.ent.set(SliderTimeUtils.format_time(end_time))
             
-            # Update markers
+            # Update markers (relies on app vars)
             self.app.slider_view.update_marker_positions()
             
-            # Handle playback repositioning if needed
+            # Handle playback repositioning if needed (relies on app vars)
             self.handle_time_field_playback_logic()
-        except ValueError:
-            # Restore to previous valid values
-            self.app.stt.set(SliderTimeUtils.format_time(float(self.app.stt.get())))
-            self.app.ent.set(SliderTimeUtils.format_time(float(self.app.ent.get())))
+
+            # Set focus to the slider canvas only if Return was pressed
+            if hasattr(event, 'keysym') and event.keysym == 'Return':
+                self.app.slider_view.canvas.focus_set()
+
+        except ValueError as e: # Catch potential errors during validation/formatting
+            messagebox.showerror("Error", f"An error occurred processing time: {e}")
+            self._sync_local_times_from_app() # Restore local fields on error
 
     
     def new_section(self):
@@ -162,7 +180,7 @@ class SectionControlPanel(ttk.LabelFrame):
             new_name = f"{base_name} {i}"
             i += 1
         
-        # Get current time field values
+        # Get current time field values FROM APP VARS (committed state)
         start_time = SliderTimeUtils.parse_time(self.app.stt.get())
         end_time = SliderTimeUtils.parse_time(self.app.ent.get())
         
@@ -195,13 +213,13 @@ class SectionControlPanel(ttk.LabelFrame):
             return
             
         section_name = self.xcb.get()
-        new_name = self.app.snm.get().strip()
+        new_name = self.nameField.get().strip()
         
         if not new_name:
             messagebox.showerror("Error", "Section name cannot be empty")
             return
             
-        # Get current start and end times
+        # Get current start and end times FROM APP VARS (committed state)
         start_time = SliderTimeUtils.parse_time(self.app.stt.get())
         end_time = SliderTimeUtils.parse_time(self.app.ent.get())
         
@@ -270,7 +288,7 @@ class SectionControlPanel(ttk.LabelFrame):
         # Create config dict
         config = {
             "title": self.app.eng.current_song.title,
-            "bpm": int(self.app.bpm.get()),
+            "bpm": self.app.bpm.get(),
             "current_section": self.app.snm.get(),
             "sections": [
                 {
@@ -337,13 +355,51 @@ class SectionControlPanel(ttk.LabelFrame):
         if current_pos < start_time:
             # Restart from new start
             self.app.eng.pause()
-            self.app.eng.set_start_position(start_time)
+            self.app.eng.set_position(start_time)
             self.app.play_current()
             self.app.sts.set(f"Restarted playback from new start: {SliderTimeUtils.format_time(start_time)}")
         elif current_pos > end_time:
             # Stop playback
             self.app.eng.pause()
             self.app.set_play_button_text(False)
-            self.app.eng.set_start_position(start_time)
+            self.app.eng.set_position(start_time)
             self.app.sts.set(f"Playback stopped: position beyond new end time")
+
+    # --- New Helper Methods ---
+
+    def _sync_local_times_from_app(self):
+        """Copy current app time values to local editing StringVars."""
+        self.local_stt.set(self.app.stt.get())
+        self.local_ent.set(self.app.ent.get())
+
+    def _on_app_time_var_changed(self, *args):
+        """Update local vars when app vars change, unless entry has focus."""
+        focused_widget = self.focus_get()
+        if focused_widget != self.ste and focused_widget != self.ene:
+            self._sync_local_times_from_app()
+
+    def _restore_time_on_escape(self, event):
+        """Restore the entry field value from the app's StringVar on Escape."""
+        self._sync_local_times_from_app()
+        self.app.slider_view.canvas.focus_set()
+        # Return "break" to prevent further processing and keep focus
+        return "break"
+
+    def set_start_time_to_current_pos(self, event=None):
+        """Set the local start time entry to the current playback position and commit."""
+        current_pos = self.app.pos.get()
+        formatted_time = SliderTimeUtils.format_time(current_pos)
+        self.local_stt.set(formatted_time)
+        # Trigger commit logic
+        self.on_time_field_change(None) 
+        print(f"Set start time to current position: {formatted_time}") # Optional feedback
+
+    def set_end_time_to_current_pos(self, event=None):
+        """Set the local end time entry to the current playback position and commit."""
+        current_pos = self.app.pos.get()
+        formatted_time = SliderTimeUtils.format_time(current_pos)
+        self.local_ent.set(formatted_time)
+        # Trigger commit logic
+        self.on_time_field_change(None)
+        print(f"Set end time to current position: {formatted_time}") # Optional feedback
 

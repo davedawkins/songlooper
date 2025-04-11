@@ -47,7 +47,7 @@ class PositionMarker:
         new_pos = self.app.pos.get()
         
         # Update engine position
-        self.app.eng.set_start_position(new_pos)
+        self.app.eng.set_position(new_pos)
         
         # Resume playback if it was playing before
         if self.slider_markers.was_playing:

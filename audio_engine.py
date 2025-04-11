@@ -29,7 +29,6 @@ class SongConfig:
 class AudioEngine:
     def __init__(self):
         self.current_song: Optional[SongConfig] = None
-        self.current_section: Optional[Section] = None
         
         self.playing = False
         self.loop = False
@@ -49,24 +48,47 @@ class AudioEngine:
         
         # We'll store a "start_position" (seconds) for the next playback.
         self._start_position = 0.0
-        
+        self._end_position = 0.0
+
         # We track the actual playback position in real time:
         self._current_position = 0.0
         
         # Callback for when mute status changes
-        self.mute_status_change_callback = None
+        self.mute_status_change_callback = { }
+        self.next_mute_cb_id = 0
+
 
     # -------------------------------------------------------
     #   GETTERS / SETTERS
     # -------------------------------------------------------
-    def set_start_position(self, pos: float):
+    def set_position(self, pos: float):
         """Next playback will begin from 'pos' seconds."""
-        print("eng: set_start_position: " + str(pos))
-        self._start_position = pos
+        self._current_position = pos
+
+    def set_loop( self, loop : bool):
+        self.loop = loop
+
+    def set_playback_speed( self, speed : float):
+        self.playback_speed = speed
+
+    def set_loop_delay( self, delay : float):
+        self.loop_delay = delay
 
     def get_start_position(self) -> float:
         return self._start_position
 
+    def set_start_position(self, pos: float):
+        """Next playback will end at 'pos' seconds."""
+        self._start_position = pos
+
+    def set_end_position(self, pos: float):
+        """Next playback will end at 'pos' seconds."""
+        print("set_end_position: " + str(pos))
+        self._end_position = pos
+
+    def get_end_position(self) -> float:
+        return self._end_position
+    
     def get_current_position(self) -> float:
         """Approximate last-known position in the original track."""
         return self._current_position
@@ -74,10 +96,19 @@ class AudioEngine:
     def is_playing(self) -> bool:
         return self.playing
         
-    def set_mute_callback(self, callback):
+    def add_mute_callback(self, callback):
         """Set a callback function to be called when mute status changes."""
-        self.mute_status_change_callback = callback
+        client_id = self.next_mute_cb_id
+        self.next_mute_cb_id += 1
+        self.mute_status_change_callback[client_id] = callback
+        return client_id
 
+    def remove_mute_callback(self, client_id):
+        """Remove a previously registered callback."""
+        if client_id in self.mute_status_change_callback:
+            del self.mute_status_change_callback[client_id]
+        else:
+            print(f"Warning: Callback ID {client_id} not found.")
     # -------------------------------------------------------
     #   SONG LOADING
     # -------------------------------------------------------
@@ -96,9 +127,6 @@ class AudioEngine:
                 target = s
                 break
         return target
-        # if not target:
-        #     raise ValueError(f"Section '{section_name}' not found.")
-        # self.current_section = target
 
     def load_song(self, song_folder: str) -> SongConfig:
         config_path = os.path.join(song_folder, "config.json")
@@ -137,77 +165,49 @@ class AudioEngine:
             raise FileNotFoundError(f"No audio files in {song_folder}")
         
         self.current_song = song_cfg
-        self.current_section = self.find_section( song_cfg.current_section )
         self.muted_stems = set()
         
         # Reset positions
         self._start_position = 0.0
         self._current_position = 0.0
+        self._end_position = self.get_total_duration()
 
-        if self.current_section:
-            print("loaded: " + str(self.current_section.start_time))
-            self._start_position = self.current_section.start_time
-            self._current_position = self.current_section.start_time
-            
+        current_section = self.find_section( song_cfg.current_section )
+
+        if current_section:
+            print("loaded: " + str(current_section))
+            self._start_position = current_section.start_time
+            self._current_position = current_section.start_time
+            self._end_position = current_section.end_time
+
         return song_cfg
     
     def get_stem_names(self) -> List[str]:
         return list(self.stems.keys())
 
-    def play_section(self, section_name: Optional[str], loop: bool, speed: float, loop_delay: float):
-            """Play from _start_position to the end of the chosen section (or full track)."""
-            if not self.current_song:
-                raise ValueError("No song loaded.")
-            
-            # Stop any existing playback
-            self.stop()
-            
-            # Clear so we can start fresh
-            self.stop_event.clear()
+    def play_section(self):
+        """Play from _start_position to the end of the chosen section (or full track)."""
+        if not self.current_song:
+            raise ValueError("No song loaded.")
+        
+        # Stop any existing playback
+        self.stop()
+        
+        # Clear so we can start fresh
+        self.stop_event.clear()
 
-            self.loop = loop
-            self.playback_speed = speed
-            self.loop_delay = loop_delay
-            
-            # Identify target section
-            if section_name:
-                target = self.find_section(section_name)
-                # for s in self.current_song.sections:
-                #     if s.name == section_name:
-                #         target = s
-                #         break
-                if not target:
-                    raise ValueError(f"Section '{section_name}' not found.")
-                self.current_section = target
-            else:
-                # Full Song
-                max_len = max(len(x) for x in self.stems.values())
-                self.current_section = Section(
-                    name="Full Song",
-                    muted=False,
-                    level=1.0,
-                    start_time=0.0,
-                    end_time=max_len / self.stem_srs
-                )
-            
-            # If the user start_position is before the section's start, clamp
-            print("Playing init: cur=" + str(self._current_position) + " start=" + str(self._start_position))
+        # If the user start_position is before the section's start, clamp
+        print("Playing init: cur=" + str(self._current_position) + " start=" + str(self._start_position))
 
-            start_sec = self._start_position
-            section_start = self.current_section.start_time
-            
-            if start_sec < section_start:
-                start_sec = section_start
-            
-            self._start_position = start_sec
-            self._current_position = start_sec
-            
-            self.playing = True
-            print("Playing: cur=" + str(self._current_position))
-            # Start worker thread
-            self.playback_thread = threading.Thread(target=self._playback_worker)
-            self.playback_thread.daemon = True
-            self.playback_thread.start()
+        if self._current_position < self._start_position or self._current_position > self._end_position:
+            self._current_position = self._start_position
+        
+        self.playing = True
+
+        # Start worker thread
+        self.playback_thread = threading.Thread(target=self._playback_worker)
+        self.playback_thread.daemon = True
+        self.playback_thread.start()
 
     def stop(self):
         self.pause()
@@ -217,11 +217,11 @@ class AudioEngine:
         if self.playing:
             self.stop_event.set()
             if self.playback_thread and self.playback_thread.is_alive():
-                self.playback_thread.join(timeout=1.0)
+                self.playback_thread.join(timeout=30.0)
             self.playing = False
         
             # Now we preserve the current_position
-            self._start_position = self._current_position
+            # self._start_position = self._current_position
 
     def set_count_in(self, enabled: bool):
         self.count_in = enabled
@@ -270,8 +270,11 @@ class AudioEngine:
             is_muted = True
             
         # Notify callback about the change if one is registered
-        if self.mute_status_change_callback:
-            self.mute_status_change_callback()
+        for client_id, callback in self.mute_status_change_callback.items():
+            if callable(callback):
+                callback(stem_name, is_muted)
+        # if self.mute_status_change_callback:
+        #     self.mute_status_change_callback(stem_name, is_muted)
             
         return is_muted
 
@@ -290,25 +293,28 @@ class AudioEngine:
     def _playback_worker(self):
         """Reads from self.current_section, streams audio from _start_position to end_time,
            possibly loops if self.loop is True."""
-        if not self.current_section:
-            self.playing = False
-            return
-        
+
+        # print("_playback: " + str(self._current_position) + " : " + str(self._start_position))
         # Optional count-in
-        if self.count_in:
-            self._play_count_in()
-            if self.stop_event.is_set():
-                self.playing = False
-                return
-        
-        start_sec = self._start_position
-        end_sec = self.current_section.end_time
+
+        need_count_in = self.count_in and self._current_position == self._start_position
+
+        start_sec = self._current_position
+        end_sec = self._end_position
         
         while not self.stop_event.is_set():
+
+            if need_count_in:
+                need_count_in = False
+                self._play_count_in()
+                if self.stop_event.is_set():
+                    self.playing = False
+                    return
+
             section_duration = end_sec - start_sec
             if section_duration <= 0:
                 if self.loop:
-                    start_sec = self.current_section.start_time
+                    start_sec = self._start_position
                     self._current_position = start_sec
                     continue
                 else:
@@ -319,7 +325,7 @@ class AudioEngine:
             orig_len = end_sample - start_sample
             if orig_len <= 0:
                 if self.loop:
-                    start_sec = self.current_section.start_time
+                    start_sec = self._start_position
                     self._current_position = start_sec
                     continue
                 else:
@@ -357,7 +363,9 @@ class AudioEngine:
                 # Check if we need to recompute the mix due to mute status change
                 if should_recompute[0]:
                     should_recompute[0] = False  # Reset flag
+
                     remaining_samples = len(mixed_section)
+
                     if remaining_samples > 0:
                         # Calculate current position in samples
                         current_sample_pos = start_sample + int((frames_consumed / float(self.stem_srs)) * self.playback_speed * self.stem_srs)
@@ -399,22 +407,22 @@ class AudioEngine:
                     outdata[len(mixed_section):] = 0
                     frames_consumed += len(mixed_section)
                     mixed_section = np.zeros((0, channels), dtype=np.float32)
-                    self.stop_event.set()
+                    # self.stop_event.set()
+                    self._current_position = end_sec
                 else:
                     outdata[:] = mixed_section[:frames]
                     mixed_section = mixed_section[frames:]
                     frames_consumed += frames
                 
-                played_sec = (frames_consumed / float(self.stem_srs)) * self.playback_speed
-                self._current_position = start_sec + played_sec
-            
+                    played_sec = (frames_consumed / float(self.stem_srs)) * self.playback_speed
+                    self._current_position = start_sec + played_sec
+
             # Define mute status change handler
-            def handle_mute_change():
+            def handle_mute_change(stem_name, is_muted):
                 should_recompute[0] = True
             
             # Set callback for mute changes
-            old_callback = self.mute_status_change_callback
-            self.mute_status_change_callback = handle_mute_change
+            callback_id = self.add_mute_callback(handle_mute_change)
             
             try:
                 with sd.OutputStream(samplerate=self.stem_srs,
@@ -422,21 +430,37 @@ class AudioEngine:
                                     blocksize=1024,
                                     dtype=np.float32,
                                     callback=callback):
-                    while len(mixed_section) > 0 and not self.stop_event.is_set():
+                    while len(mixed_section) > 0 and not self.stop_event.is_set() and (self._end_position - self._current_position) > 0.001:
                         time.sleep(0.05)
             finally:
                 # Restore the original callback
-                self.mute_status_change_callback = old_callback
-            
+                self.remove_mute_callback(callback_id)
+
             if self.stop_event.is_set():
+                print("Stopped")
                 break
             
+            if len(mixed_section) == 0 and (self._end_position - self._current_position) > 0.001:
+                # End position likely changed to a larger value, go around but with current position
+                print("End changed?")
+                start_sec = self._current_position
+                end_sec = self._end_position
+                continue
+
             if not self.loop:
                 break
             
+            start_sec = self._current_position
+            end_sec = self._end_position
+
+            print("Delaying " + str(self.loop_delay))
             time.sleep(self.loop_delay)
-            start_sec = self.current_section.start_time
-            self._current_position = start_sec
+
+            print("Restarting: " + str(self._start_position))
+            need_count_in = self.count_in
+
+            # start_sec = self.
+            self._current_position = self._start_position
         
         self.playing = False
         # Do NOT forcibly set _start_position to end here.

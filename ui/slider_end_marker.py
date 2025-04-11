@@ -6,7 +6,8 @@ class EndMarker:
     def __init__(self, slider_markers):
         self.slider_markers = slider_markers
         self.slider_view = slider_markers.slider_view
-    
+        self.app = slider_markers.app
+
     def draw(self, canvas, x, content_top, content_bottom):
         """Draw the end marker at the specified position."""
         # Calculate actual vertical bounds for stems
@@ -53,7 +54,7 @@ class EndMarker:
         end_time = SliderTimeUtils.parse_time(self.app.ent.get())
         
         # Resume playback if needed
-        if self.slider_markers.was_playing:
-            self.slider_view.app.play_current()
+        # if self.slider_markers.was_playing:
+        #     self.slider_view.app.play_current()
         
         self.slider_view.app.sts.set(f"Section end: {SliderTimeUtils.format_time(end_time)}")

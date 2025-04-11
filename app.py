@@ -2,6 +2,7 @@ import os
 import tkinter as tk
 from tkinter import ttk, messagebox, Menu
 from audio_engine import AudioEngine
+import tkinter.font as tkFont
 
 from ui.song_selection import SongSelectionPanel
 from ui.section_controls import SectionControlPanel
@@ -13,6 +14,7 @@ from utils.settings import SettingsManager
 from utils.midi_controller import MidiController
 from ui.slider_time_utils import SliderTimeUtils
 from tkhtmlview import HTMLLabel
+
 import markdown
 
 class TimeLabel(ttk.Label):
@@ -41,7 +43,7 @@ class GuitarPracticeApp:
         self.root = root
         self.root.title("Guitar Practice Tool")
         self.root.geometry("1200x1200")
-        self.root.minsize(1200, 1200)
+        self.root.minsize(600, 800)
         
         # --- Engine & State ---
         self.eng = AudioEngine()
@@ -65,7 +67,7 @@ class GuitarPracticeApp:
         self.svm = tk.BooleanVar(value=False)  # Section view mode
         self.stt = tk.StringVar(value="00:00.0")  # Start time
         self.ent = tk.StringVar(value="00:00.0")  # End time
-        self.bpm = tk.StringVar(value="120") #  BPM
+        self.bpm = tk.DoubleVar(value=120) #  BPM
 
         # Status variable
         self.sts = tk.StringVar(value="Ready")
@@ -92,9 +94,11 @@ class GuitarPracticeApp:
         self.apply_settings()
         
         # Set up the mute status change callback in the audio engine
-        self.eng.set_mute_callback(self.on_mute_status_change)
+        self.eng.add_mute_callback(self.on_mute_status_change)
         
         self.bpm.trace_add("write", lambda *args:self.section_panel.save_song_config())
+        self.ent.trace_add("write", lambda *args: self.eng.set_end_position( SliderTimeUtils.parse_time(self.ent.get())) )
+        self.stt.trace_add("write", lambda *args: self.eng.set_start_position( SliderTimeUtils.parse_time(self.stt.get())) )
 
     def save_settings(self):
         self.settings.save_settings(self)
@@ -132,16 +136,17 @@ class GuitarPracticeApp:
         self.notebook = ttk.Notebook(self.frm,padding=[0,0,0,10])
         self.notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 0))
         
+        monospace_font = tkFont.Font(family="Courier", size=12)  # Change "Courier" if needed
+
         self.notes_frame = tk.Frame( self.notebook, bg="white")
         self.notes_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
         
         self.notes_frame2 = tk.Frame( self.notes_frame)
         self.notes_frame2.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        self.notes_panel = HTMLLabel(self.notes_frame2, html="No notes", background="white", borderwidth=0, highlightthickness=0)
+        self.notes_panel = HTMLLabel(self.notes_frame2, html="No notes", font=monospace_font, background="white", borderwidth=0, highlightthickness=0)
         self.notes_panel.pack(fill=tk.BOTH, expand=True)
         self.notebook.add(self.notes_frame, text="Notes")
-
 
         # Stems panel (first tab)
         self.stems_panel = StemsPanel(self.notebook, self)
@@ -156,6 +161,49 @@ class GuitarPracticeApp:
 
         self.songName.trace_add( "write", lambda *args: self.loadNotes())
     
+
+    def toggle_stem(self, stem_name):
+            """Toggle a stem's muted state."""
+            app = self
+            eng = app.eng
+            print(f"App: Toggling stem '{stem_name}'")
+
+            if not eng.current_song:
+                return
+                
+            # Get the current state
+            # current_state = self.stv[stem_name].get()
+            # is_muted = stem_name in eng.muted_stems
+            
+            # Toggle mute state
+            new_mute = eng.toggle_mute_stem(stem_name)
+            song_title = eng.current_song.title if eng.current_song else ""
+            
+            # Update muted stems in settings
+            if song_title not in app.settings.mut:
+                app.settings.mut[song_title] = []
+            
+            if new_mute:
+                if stem_name not in app.settings.mut[song_title]:
+                    app.settings.mut[song_title].append(stem_name)
+                app.sts.set(f"Muted: {stem_name}")
+            else:
+                if stem_name in app.settings.mut[song_title]:
+                    app.settings.mut[song_title].remove(stem_name)
+                app.sts.set(f"Unmuted: {stem_name}")
+            
+            # Update UI to reflect new state (opposite of muted state)
+            # self.stv[stem_name].set(not new_mute)
+            
+            # Save settings immediately
+            app.settings.save_settings(app)
+            
+            # Update the waveform to reflect mute changes
+            if hasattr(app, 'slider_view'):
+                app.slider_view.update_marker_positions()
+        
+
+
     def wrapHtml( html : str ):
         return f"""
     <div style="background-color: white;">
@@ -211,6 +259,14 @@ class GuitarPracticeApp:
         # We also need to handle various widgets that might consume the spacebar
         # Apply spacebar handling to all interactive widgets
         self._bind_spacebar_to_all_widgets(self.frm)
+
+        # Bind shortcuts specific to the slider canvas having focus
+        # Ensure slider_view and section_panel are initialized before binding
+        if hasattr(self, 'slider_view') and hasattr(self, 'section_panel'):
+             # Use <KeyPress-i> for lowercase 'i', <KeyPress-I> for uppercase 'I'
+             # Binding to the lowercase ensures it works regardless of Caps Lock state usually.
+            self.slider_view.canvas.bind("<KeyPress-[>", self.section_panel.set_start_time_to_current_pos)
+            self.slider_view.canvas.bind("<KeyPress-]>", self.section_panel.set_end_time_to_current_pos)
 
     def _bind_spacebar_to_all_widgets(self, parent):
         """Recursively bind spacebar handler to all interactive widgets."""
@@ -288,7 +344,7 @@ class GuitarPracticeApp:
         if was_playing:
             self.eng.pause()
 
-        self.eng.set_start_position(new_pos)
+        self.eng.set_position(new_pos)
         
         # Update UI
         self.pos.set(new_pos)
@@ -399,6 +455,7 @@ class GuitarPracticeApp:
             
             # Format times for display
             app.pos.set( app.eng.get_current_position() )
+            print("Start time (apply settngs): " + str(start_time))
             app.stt.set(SliderTimeUtils.format_time(start_time))
             app.ent.set(SliderTimeUtils.format_time(end_time))
 
@@ -409,15 +466,17 @@ class GuitarPracticeApp:
         if event.widget == self.root and hasattr(self, 'slider_view'):
             self.slider_view.update_marker_positions()
     
-    def on_mute_status_change(self):
+    def on_mute_status_change(self, stem_name, is_muted):
         """Callback for when a stem's mute status changes during playback."""
+        print(f"App: Mute status changed for '{stem_name}' to {is_muted}")
         self.slider_view.update_marker_positions()
-    
+        self.stems_panel.update_stem_mute_status(stem_name, is_muted)
+
     def update_song_position(self):
         """Poll engine position and update UI."""
         if self.eng.is_playing():
             pos = self.eng.get_current_position()
-            total_duration = self.eng.get_total_duration()
+            # total_duration = self.eng.get_total_duration()
             
             # Update position variable using data binding
             self.pos.set(pos)
@@ -426,19 +485,19 @@ class GuitarPracticeApp:
             end_time_str = self.ent.get()
             end_time = SliderTimeUtils.parse_time(end_time_str)
             
-            if pos >= end_time:
-                if self.lop.get():
-                    # Loop back to start of section
-                    self.eng.pause()
-                    start_time = SliderTimeUtils.parse_time(self.stt.get()) 
-                    self.eng.set_start_position(start_time)
-                    self.play_current()
-                    self.sts.set(f"Looped back to section start")
-                else:
-                    # Stop playback at end marker
-                    self.eng.pause()
-                    self.set_play_button_text(False)
-                    self.sts.set(f"Reached end of section")
+            # if pos >= end_time:
+            #     if self.lop.get():
+            #         # Loop back to start of section
+            #         self.eng.pause()
+            #         start_time = SliderTimeUtils.parse_time(self.stt.get()) 
+            #         self.eng.set_start_position(start_time)
+            #         self.play_current()
+            #         self.sts.set(f"Looped back to section start")
+            #     else:
+            #         # Stop playback at end marker
+            #         self.eng.pause()
+            #         self.set_play_button_text(False)
+            #         self.sts.set(f"Reached end of section")
         
         # Schedule next update
         self.root.after(50, self.update_song_position)
@@ -450,12 +509,18 @@ class GuitarPracticeApp:
         else:
             self.play_current()
     
+    def is_playing(self):
+        """Check if the engine is currently playing."""
+        return self.eng.is_playing()
+
     def play_current(self):
         """Play the current section from the engine's position."""
         if not self.eng.current_song:
             messagebox.showerror("Error", "No song loaded")
             return
         
+        self.eng.set_count_in(self.cin.get())
+
         section_name = self.section_panel.xcb.get()
         if section_name == "Full Song":
             section_name = None
@@ -463,20 +528,23 @@ class GuitarPracticeApp:
         try:
             current_pos = self.eng.get_current_position()
             start_time = SliderTimeUtils.parse_time(self.stt.get())
-            
+            end_time = SliderTimeUtils.parse_time(self.ent.get())
+
+            self.eng.set_start_position(start_time)
+            self.eng.set_end_position(end_time)
+
             # Only check lower boundary - we allow playing beyond the end marker
             if current_pos < start_time:
-                self.eng.set_start_position(start_time)
+                self.eng.set_position(start_time)
                 old_pos = start_time
             else:
                 old_pos = current_pos
             
-            self.eng.play_section(
-                section_name=None,  # Always use full song for actual playback range
-                loop=self.lop.get(),
-                speed=self.spd.get(),
-                loop_delay=self.dly.get()
-            )
+            self.eng.set_loop(self.lop.get())
+            self.eng.set_playback_speed(self.spd.get())
+            self.eng.set_loop_delay(self.dly.get())
+
+            self.eng.play_section()
             
             # Update button
             self.set_play_button_text(True)
@@ -519,7 +587,7 @@ class GuitarPracticeApp:
         self.eng.pause()
         
         # Update engine position
-        self.eng.set_start_position(start_time)
+        self.eng.set_position(start_time)
         
         # Update slider position variable
         # This triggers the trace callback which updates the UI

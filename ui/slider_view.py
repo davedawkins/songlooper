@@ -46,7 +46,7 @@ class SliderView(ttk.Frame):
         
         # Canvas for markers with increased height and white background
         self.canvas = tk.Canvas(self.slider_frame, height=canvas_height, bg="#FFFFFF", 
-                               highlightthickness=1, highlightbackground="#cccccc")
+                               highlightthickness=1, highlightbackground="#cccccc", takefocus=True)
         self.canvas.pack(fill=tk.BOTH, expand=True)
         
         # Add canvas bindings
@@ -132,7 +132,13 @@ class SliderView(ttk.Frame):
     
     def on_canvas_click(self, event):
         """Forward to markers."""
-        self.markers.on_canvas_click(event)
+        self.canvas.focus_set()  # Ensure the canvas has focus
+        clickedStem = self.waveform.stemHitTest(event.x, event.y)
+        if clickedStem is not None:
+            self.app.toggle_stem(clickedStem)
+            # self.markers.set_marker(clickedStem)
+        else:
+            self.markers.on_canvas_click(event)
     
     def on_canvas_drag(self, event):
         """Forward to markers."""

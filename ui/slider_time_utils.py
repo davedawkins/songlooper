@@ -14,8 +14,8 @@ class SliderTimeUtils:
         """Format time in mm:ss.c format."""
         minutes, sec_frac = divmod(seconds, 60)
         sec = int(sec_frac)
-        decisec = int((sec_frac - sec) * 10)  # Only one decimal place
-        return f"{int(minutes):02d}:{sec:02d}.{decisec}"
+        msec = int((sec_frac - sec) * 1000)  # 3 decimal places
+        return f"{int(minutes):02d}:{sec:02d}.{msec}"
 
     def parse_time(time_str):
         """Parse time from either mm:ss.c format or float seconds."""
@@ -24,18 +24,18 @@ class SliderTimeUtils:
                 # Parse from mm:ss.c format
                 parts = time_str.split(":")
                 minutes = int(parts[0])
-                if "." in parts[1]:
-                    sec_parts = parts[1].split(".")
-                    seconds = int(sec_parts[0])
-                    if len(sec_parts[1]) > 0:
-                        # Only use the first digit for deciseconds
-                        decisec = int(sec_parts[1][0])
-                        return minutes * 60 + seconds + decisec / 10
-                    else:
-                        return minutes * 60 + seconds
-                else:
-                    seconds = float(parts[1])
-                    return minutes * 60 + seconds
+                seconds = float(parts[1])
+                # if "." in parts[1]:
+                #     sec_parts = parts[1].split(".")
+                #     seconds = int(sec_parts[0])
+                #     if len(sec_parts[1]) > 0:
+                #         msec = int(sec_parts[1][0])
+                #         return minutes * 60 + seconds + msec / 1000
+                #     else:
+                #         return minutes * 60 + seconds
+                # else:
+                #     seconds = float(parts[1])
+                return minutes * 60.0 + seconds
             except (ValueError, IndexError):
                 return None
         else:
@@ -123,7 +123,7 @@ class SliderTimeUtils:
             self.slider_view.app.eng.pause()
         
         print("update_position_from_x: Setting engine start position: " + str(new_pos))
-        self.slider_view.app.eng.set_start_position(new_pos)
+        self.slider_view.app.eng.set_position(new_pos)
         
         # Update position variable - triggers UI update through trace
         self.app.pos.set(new_pos)

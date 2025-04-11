@@ -1,27 +1,58 @@
 {
   "songs_folder": "/Users/david/projects/Songs",
-  "current_song": "CustardPie",
-  "current_section": "Full Solo",
+  "current_song": "NoQuarterKvFixed",
+  "current_section": "Solo-pt1",
   "speed": 1.0,
-  "loop_delay": 0.5,
+  "loop_delay": 0.0,
   "loop_playback": true,
-  "count_in": true,
+  "count_in": false,
   "muted_stems_info": {
     "CustardPie": [
-      "01 - Custard Pie - Bass",
-      "01 - Custard Pie - Drums"
+      "01 - Custard Pie - Vocals"
     ],
-    "NoQuarterKv": [
-      "LZNQ_Full",
-      "LZNQ_Click"
+    "NoQuarterKv": [],
+    "Photograph": [
+      "Def_Leppard_Photograph_Click"
+    ],
+    "JustWhatINeeded": [
+      "The_Cars_Just_What_I_Needed_RhythmGuitars",
+      "The_Cars_Just_What_I_Needed_BackingVox",
+      "The_Cars_Just_What_I_Needed_Click",
+      "The_Cars_Just_What_I_Needed_Synth"
+    ],
+    "TobaccoRoad": [
+      "David_Lee_Roth_Tobacco_Road_Click",
+      "David_Lee_Roth_Tobacco_Road_SynthBrass"
+    ],
+    "SmokinInTheBoysRoom": [
+      "Motley_Crue_Smokin_in_the_Boys_Room_Click"
+    ],
+    "SinceIveBeenLovingYou": [
+      "Led_Zeppelin_Since_I_ve_Been_Loving_You_Click"
+    ],
+    "ThankYou": [
+      "Led_Zeppelin_Thank_You_LeadAcGuitar",
+      "Led_Zeppelin_Thank_You_GuitarEffect",
+      "Led_Zeppelin_Thank_You_Drums",
+      "Led_Zeppelin_Thank_You_Bass",
+      "Led_Zeppelin_Thank_You_BackingVox",
+      "Led_Zeppelin_Thank_You_RhythmAcGuitar",
+      "Led_Zeppelin_Thank_You_Click",
+      "Led_Zeppelin_Thank_You_LeadVox"
+    ],
+    "BronYAur": [
+      "BronYAur-Guitar"
+    ],
+    "NoQuarterKvFixed": [
+      "LZ - LZNQ_PartialClick"
     ]
   },
   "midi_settings": {
     "enabled": null,
-    "device": "MPK mini 3",
-    "play_pause_note": 48,
-    "rewind_note": 62,
-    "next_section_note": 64,
-    "prev_section_note": 65
+    "device": "SoftStep Control Surface",
+    "play_pause_note": 60,
+    "rewind_note": 61,
+    "next_section_note": 62,
+    "prev_section_note": 63
   }
 }

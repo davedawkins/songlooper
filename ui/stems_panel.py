@@ -70,14 +70,14 @@ class StemsPanel(ttk.LabelFrame):
         ttk.Separator(self.stc, orient="horizontal").grid(row=1, column=0, sticky=tk.EW, padx=5)
         
         for i, stem in enumerate(stem_names):
-            var = tk.BooleanVar(value=True)
+            var = tk.BooleanVar(value=False)
             self.stv[stem] = var
             
             # Check if stem is already muted
             if hasattr(self.app, 'eng') and self.app.eng.current_song:
                 song_title = self.app.eng.current_song.title
                 if song_title in self.app.settings.mut and stem in self.app.settings.mut[song_title]:
-                    var.set(False)
+                    var.set(True)
             
             # Function to handle checkbox state change
             def on_check(s=stem):
@@ -102,39 +102,47 @@ class StemsPanel(ttk.LabelFrame):
             if i < len(stem_names) - 1:
                 sep = ttk.Separator(self.stc, orient="horizontal")
                 sep.grid(row=i+3, column=0, sticky=tk.EW, padx=12)
-    
+
+    def update_stem_mute_status(self, stem_name, is_muted):
+        print(f"Stems: Updating stem '{stem_name}' mute status to {is_muted}")
+        self.stv[stem_name].set(is_muted)
+
     def toggle_stem(self, stem_name):
         """Toggle a stem's muted state."""
-        if not self.app.eng.current_song:
-            return
+        app = self.app
+        eng = app.eng
+        print(f"Stems: Toggling stem '{stem_name}'")
+        app.toggle_stem(stem_name)
+        # if not app.eng.current_song:
+        #     return
             
-        # Get the current state
-        current_state = self.stv[stem_name].get()
+        # # Get the current state
+        # current_state = self.stv[stem_name].get()
         
-        # Toggle mute state
-        new_mute = self.app.eng.toggle_mute_stem(stem_name)
-        song_title = self.app.eng.current_song.title if self.app.eng.current_song else ""
+        # # Toggle mute state
+        # new_mute = eng.toggle_mute_stem(stem_name)
+        # song_title = eng.current_song.title if eng.current_song else ""
         
-        # Update muted stems in settings
-        if song_title not in self.app.settings.mut:
-            self.app.settings.mut[song_title] = []
+        # # Update muted stems in settings
+        # if song_title not in app.settings.mut:
+        #     app.settings.mut[song_title] = []
         
-        if new_mute:
-            if stem_name not in self.app.settings.mut[song_title]:
-                self.app.settings.mut[song_title].append(stem_name)
-            self.app.sts.set(f"Muted: {stem_name}")
-        else:
-            if stem_name in self.app.settings.mut[song_title]:
-                self.app.settings.mut[song_title].remove(stem_name)
-            self.app.sts.set(f"Unmuted: {stem_name}")
+        # if new_mute:
+        #     if stem_name not in app.settings.mut[song_title]:
+        #         app.settings.mut[song_title].append(stem_name)
+        #     app.sts.set(f"Muted: {stem_name}")
+        # else:
+        #     if stem_name in app.settings.mut[song_title]:
+        #         app.settings.mut[song_title].remove(stem_name)
+        #     app.sts.set(f"Unmuted: {stem_name}")
         
-        # Update UI to reflect new state (opposite of muted state)
-        self.stv[stem_name].set(not new_mute)
+        # # Update UI to reflect new state (opposite of muted state)
+        # self.stv[stem_name].set(not new_mute)
         
-        # Save settings immediately
-        self.app.settings.save_settings(self.app)
+        # # Save settings immediately
+        # app.settings.save_settings(app)
         
-        # Update the waveform to reflect mute changes
-        if hasattr(self.app, 'slider_view'):
-            self.app.slider_view.update_marker_positions()
+        # # Update the waveform to reflect mute changes
+        # if hasattr(app, 'slider_view'):
+        #     app.slider_view.update_marker_positions()
     

@@ -129,9 +129,10 @@ class SliderMarkers:
                 self.slider_view.app.eng.pause()
         else:
             # Empty space was clicked - set position directly
-            if self.was_playing:
-                self.slider_view.app.eng.pause()
-            SliderTimeUtils.update_position_from_x(event.x)
+            if event.y > self.slider_view.waveform.TOP_MARGIN and event.y < self.slider_view.canvas.winfo_height() - self.slider_view.waveform.BOTTOM_MARGIN:
+                if self.was_playing:
+                    self.slider_view.app.eng.pause()
+                self.app.slider_view.time_utils.update_position_from_x(event.x)
     
     def on_canvas_drag(self, event):
         """Handle drag motion on canvas."""

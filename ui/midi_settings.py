@@ -271,7 +271,10 @@ class MidiSettingsPanel(ttk.LabelFrame):
                 self.app.section_panel.xcb.set(sections[0])
                 self.app.section_panel.on_section_selected(None)
                 self.app.sts.set(f"Selected section: {sections[0]}")
-    
+
+        
+
+
     def go_to_prev_section(self):
         """Navigate to the previous section in the list."""
         if not hasattr(self.app, 'section_panel') or not self.app.eng.current_song:

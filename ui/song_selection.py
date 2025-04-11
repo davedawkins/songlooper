@@ -137,8 +137,9 @@ class SongSelectionPanel(ttk.LabelFrame):
             
             # Set section name and times
             self.app.snm.set(song_config.current_section)
-            self.app.stt.set(round(start_time, 2))
-            self.app.ent.set(round(end_time, 2))
+            print("Start time (load selected song):", start_time)
+            self.app.stt.set(round(start_time, 4))
+            self.app.ent.set(round(end_time, 4))
             
             # Reset view mode to full song
             self.app.svm.set(False)
@@ -166,8 +167,8 @@ class SongSelectionPanel(ttk.LabelFrame):
             if song_config.title in self.app.settings.mut:
                 for stem_name in self.app.settings.mut[song_config.title]:
                     self.app.eng.toggle_mute_stem(stem_name)
-                    if stem_name in self.app.stems_panel.stv:
-                        self.app.stems_panel.stv[stem_name].set(False)
+                    # if stem_name in self.app.stems_panel.stv:
+                    #     self.app.stems_panel.stv[stem_name].set(False)
             
             # Reset to 0
             # self.app.eng.set_start_position(0.0)
