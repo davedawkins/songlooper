@@ -145,7 +145,14 @@ class SongSelectionPanel(ttk.LabelFrame):
             self.app.stems_panel.update_stems_panel()
             self.app.section_panel.update_section_combobox()
             self.app.slider_view.waveform.invalidate_cache() # Invalidate cache on song load
-            self.app.slider_view.update_marker_positions() # Redraw slider
+            
+            # Reset view range to full song duration on manual load
+            total_duration = self.app.eng.get_total_duration()
+            self.app.vst.set(0.0)
+            self.app.vet.set(total_duration if total_duration > 0 else 1.0)
+            print(f"[Load Song] Resetting view range: vst=0.0, vet={self.app.vet.get()}") # DIAGNOSTIC
+            
+            self.app.slider_view.update_marker_positions() # Redraw slider with new view range
             
             # Apply muted stems from settings
             if song_config.title in self.app.settings.mut:
@@ -159,6 +166,9 @@ class SongSelectionPanel(ttk.LabelFrame):
             
             self.app.settings.save_settings(self.app)
             self.app.songName.set( song_name )
+            # Update time label explicitly after loading song and setting other UI elements
+            if hasattr(self.app, 'time_label'):
+                self.app.time_label.update()
 
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load song: {str(e)}")

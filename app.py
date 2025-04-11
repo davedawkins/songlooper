@@ -28,12 +28,11 @@ class TimeLabel(ttk.Label):
         self.config(text="00:00.0 / 00:00.0", width=20)
         self.pack(side=tk.LEFT, padx=(0, 5))
 
-        self.app.dur.trace_add("write", lambda *args: self.update())
         self.app.pos.trace_add("write", lambda *args: self.update())
         
     def update(self):
         current = self.app.pos.get()
-        total   = self.app.dur.get()
+        total = self.app.eng.get_total_duration() if self.app.eng.current_song else 0.0
 
         time_text = f"{SliderTimeUtils.format_time(current)} / {SliderTimeUtils.format_time(total)}"
         self.config(text=time_text)
@@ -71,7 +70,6 @@ class GuitarPracticeApp:
         # Status variable
         self.sts = tk.StringVar(value="Ready")
         self.pos = tk.DoubleVar(value=0.0) # Song position
-        self.dur = tk.DoubleVar(value=0.0) # Song duration
 
         # View range variables
         self.vst = tk.DoubleVar(value=0.0) # View start time
@@ -106,22 +104,6 @@ class GuitarPracticeApp:
         # Traces for view range changes
         self.vst.trace_add("write", lambda *args: self.slider_view.update_marker_positions() if hasattr(self, 'slider_view') else None)
         self.vet.trace_add("write", lambda *args: self.slider_view.update_marker_positions() if hasattr(self, 'slider_view') else None)
-        # Trace duration to update view end time when song loads/changes
-        self.dur.trace_add("write", self._update_view_end_on_duration_change)
-
-    def _update_view_end_on_duration_change(self, *args):
-        """Update the view end time when the song duration changes."""
-        total_duration = self.dur.get()
-        if total_duration > 0:
-            # Only reset view if it seems uninitialized or covers the whole previous range
-            # This prevents resetting zoom when simply reloading the same song
-            current_vet = self.vet.get()
-            # Check if current_vet is close to the previous duration (if available)
-            # or if it's the default 1.0
-            # This logic might need refinement depending on desired behavior on reload
-            if abs(current_vet - total_duration) > 0.1 or abs(current_vet - 1.0) < 0.01:
-                 self.vet.set(total_duration)
-                 self.vst.set(0.0) # Reset start as well when duration changes significantly
 
     def save_settings(self):
         self.settings.save_settings(self)
@@ -147,17 +129,23 @@ class GuitarPracticeApp:
         
         self.playback_panel = PlaybackControlPanel(self.frm, self)
         self.playback_panel.pack(fill=tk.X, pady=(0, 2))
-        
+
+        # Create PanedWindow for Slider and Notebook
+        self.paned_window = ttk.PanedWindow(self.frm, orient=tk.VERTICAL)
+        self.paned_window.pack(fill=tk.BOTH, expand=True, pady=(0, 2))
+
         # Slider with markers
-        self.slider_view = SliderView(self.frm, self)
-        self.slider_view.pack(fill=tk.BOTH, pady=(0, 2))
-        
-        # Transport buttons
+        self.slider_view = SliderView(self.paned_window, self)
+        # self.slider_view.pack(fill=tk.BOTH, pady=(0, 2)) # Removed old packing
+        self.paned_window.add(self.slider_view, weight=1) # Add slider to paned window
+
+        # Transport buttons (Positioned after slider, before notebook in layout)
         self.setup_transport()
-        
+
         # Create notebook for tabbed panels
-        self.notebook = ttk.Notebook(self.frm,padding=[0,0,0,10])
-        self.notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 0))
+        self.notebook = ttk.Notebook(self.paned_window, padding=[0,0,0,10])
+        # self.notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 0)) # Removed old packing
+        self.paned_window.add(self.notebook, weight=1) # Add notebook to paned window
         
         monospace_font = tkFont.Font(family="Courier", size=12)  # Change "Courier" if needed
 
@@ -207,11 +195,11 @@ class GuitarPracticeApp:
                 app.settings.mut[song_title] = []
             
             if new_mute:
-                if stem_name not in app.settings.mut[song_title]:
+                if (stem_name not in app.settings.mut[song_title]):
                     app.settings.mut[song_title].append(stem_name)
                 app.sts.set(f"Muted: {stem_name}")
             else:
-                if stem_name in app.settings.mut[song_title]:
+                if (stem_name in app.settings.mut[song_title]):
                     app.settings.mut[song_title].remove(stem_name)
                 app.sts.set(f"Unmuted: {stem_name}")
             
@@ -394,8 +382,9 @@ class GuitarPracticeApp:
     
     def setup_transport(self):
         """Setup transport control buttons."""
+        # Note: Packing this into self.frm directly, above the PanedWindow
         tpf = ttk.Frame(self.frm)
-        tpf.pack(fill=tk.X, pady=(0, 10))
+        tpf.pack(fill=tk.X, pady=(0, 5)) # Adjusted padding
 
         # Rewind button
         ttk.Button(tpf, text="⏮", command=self.rewind_section_start).pack(side=tk.LEFT, padx=5)
@@ -405,7 +394,7 @@ class GuitarPracticeApp:
         self.ppb.pack(side=tk.LEFT, padx=5)
     
         self.time_label = TimeLabel(tpf, self)
-        self.time_label.pack(side=tk.LEFT, padx=5)
+        # self.time_label.pack(side=tk.LEFT, padx=5) # Packing handled within TimeLabel's setup_ui
 
     def browse_folder(self):
         """Open folder dialog and load songs."""
@@ -424,6 +413,17 @@ class GuitarPracticeApp:
     def apply_settings(self):
         app = self
         current_song = self.settings.current_song
+        # Read the view range values *already loaded* by load_settings
+        # Keep 1.0 as initial fallback for vet before duration is known
+        # Use a placeholder like -1 to distinguish missing/default from a valid 1.0
+        # Note: load_settings defaults vet to 1.0 if not found in settings.json
+        loaded_vst = app.vst.get()
+        loaded_vet = app.vet.get()
+        # Use the placeholder logic for vet if it's the default 1.0 from load_settings
+        saved_vst = loaded_vst
+        saved_vet = loaded_vet if loaded_vet > 1.0 else -1.0
+
+        print(f"[Apply Settings] Using loaded view range: vst={saved_vst}, vet={saved_vet}") # DIAGNOSTIC
 
         if app.dir and os.path.isdir(app.dir):
             app.song_panel.refresh_song_list()
@@ -431,9 +431,21 @@ class GuitarPracticeApp:
                 app.song_panel.scb.set(current_song)
                 app.sts.set(f"Selected: {current_song}")
         
+        song_loaded_successfully = False
         if app.song_panel.scb.get():
-            app.song_panel.load_selected_song() # This should trigger eng.load_song -> app.dur update -> _update_view_end_on_duration_change
-        
+            # Store the intended view range before loading the song
+            intended_vst = saved_vst
+            intended_vet = saved_vet
+            print(f"[Apply Settings] Intended view range before song load: vst={intended_vst}, vet={intended_vet}") # DIAGNOSTIC
+            
+            app.song_panel.load_selected_song() # This triggers duration update
+            song_loaded_successfully = app.eng.current_song is not None
+            print(f"[Apply Settings] Song loaded: {song_loaded_successfully}, Current song: {app.eng.current_song.title if app.eng.current_song else 'None'}") # DIAGNOSTIC
+            # Update time label explicitly after loading song
+            if hasattr(app, 'time_label'):
+                app.time_label.update()
+
+        # Apply MIDI settings (unchanged)
         midi_settings = self.settings.midi_settings
         if midi_settings:
             self.midi_settings = midi_settings
@@ -482,10 +494,42 @@ class GuitarPracticeApp:
             app.stt.set(SliderTimeUtils.format_time(start_time))
             app.ent.set(SliderTimeUtils.format_time(end_time))
 
-            # Initialize view range if not already set by duration trace
-            if self.vet.get() <= 1.0 and end_time > 0: # Check if vet is still default or small
-                self.vst.set(0.0)
-                self.vet.set(end_time) # Set initial view to full song duration
+            # Apply the saved/intended view range *after* song duration is known
+            # Get duration directly from engine
+            total_duration = app.eng.get_total_duration()
+
+            if total_duration > 0:
+                 # Clamp intended_vst to valid range
+                 final_vst = max(0.0, min(intended_vst, total_duration))
+                 
+                 # Determine final_vet: Use total_duration if intended_vet is invalid/missing/default placeholder
+                 if intended_vet <= final_vst or intended_vet == -1.0:
+                     final_vet = total_duration
+                     print(f"[Apply Settings] Using total_duration for final_vet: {final_vet}") # DIAGNOSTIC
+                 else:
+                     # Otherwise, use the intended value, clamped to duration
+                     final_vet = max(final_vst + 0.1, min(intended_vet, total_duration))
+                     print(f"[Apply Settings] Using intended_vet (clamped) for final_vet: {final_vet}") # DIAGNOSTIC
+
+                 # Ensure vst is strictly less than vet
+                 if final_vst >= final_vet:
+                     print(f"[Apply Settings] Adjusting final_vst ({final_vst}) because it was >= final_vet ({final_vet})") # DIAGNOSTIC
+                     final_vst = max(0.0, final_vet - 0.1)
+
+                 print(f"[Apply Settings] Setting view range (duration > 0): vst={final_vst}, vet={final_vet}") # DIAGNOSTIC
+                 self.vst.set(final_vst)
+                 self.vet.set(final_vet)
+            else: # Fallback if duration is still 0 (song load failed?)
+                 print(f"[Apply Settings] Fallback triggered: total_duration <= 0 ({total_duration})") # DIAGNOSTIC
+                 # Set a minimal valid range instead of using 1.0
+                 final_vst = max(0.0, intended_vst if intended_vst != -1.0 else 0.0) # Use saved vst if valid
+                 final_vet = final_vst + 0.1 # Set vet slightly after vst
+                 print(f"[Apply Settings] Setting view range (fallback): vst={final_vst}, vet={final_vet}") # DIAGNOSTIC
+                 self.vst.set(final_vst)
+                 self.vet.set(final_vet)
+        else: # DIAGNOSTIC - Added else case for when app.eng.current_song is None
+            print(f"[Apply Settings] No current song loaded, cannot set section times or view range based on duration.") # DIAGNOSTIC
+
 
         self.update_song_position()
     

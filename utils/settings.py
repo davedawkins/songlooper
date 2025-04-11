@@ -51,6 +51,10 @@ class SettingsManager:
 
         # self.section_name = data.get("current_section", "Full Song")
 
+        # Load view times, default to 0.0 and 1.0 if not found
+        app.vst.set(data.get("view_start_time", 0.0))
+        app.vet.set(data.get("view_end_time", 1.0))
+
     def save_settings(self, app):
         """Save app settings to file."""
         # For section times, save the actual numeric values
@@ -72,7 +76,9 @@ class SettingsManager:
             "loop_playback": app.lop.get(),
             "count_in": app.cin.get(),
             "muted_stems_info": self.mut,
-            "midi_settings": self.midi_settings
+            "midi_settings": self.midi_settings,
+            "view_start_time": app.vst.get(), # Save view start time
+            "view_end_time": app.vet.get()    # Save view end time
         }
         
         try:
