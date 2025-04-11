@@ -141,29 +141,13 @@ class SongSelectionPanel(ttk.LabelFrame):
             self.app.stt.set(round(start_time, 4))
             self.app.ent.set(round(end_time, 4))
             
-            # Reset view mode to full song
-            self.app.svm.set(False)
-            
             # Update UI components
             self.app.stems_panel.update_stems_panel()
+            self.app.section_panel.update_section_combobox()
+            self.app.slider_view.waveform.invalidate_cache() # Invalidate cache on song load
+            self.app.slider_view.update_marker_positions() # Redraw slider
             
-            # Slider range - always start in full song view
-            total_duration = self.app.eng.get_total_duration()
-            self.app.dur.set( total_duration )
-
-            # self.app.slider_view.update_time_label(0, total_duration)
-            
-            # Force resize of the slider canvas now that stems are loaded
-            self.app.slider_view.resize_canvas_if_needed()
-            # Schedule multiple resize calls after UI updates with increasing delays
-            # to ensure it takes effect even if some UI operations are slow
-            self.app.root.after(100, self.app.slider_view.resize_canvas_if_needed)
-            self.app.root.after(300, self.app.slider_view.resize_canvas_if_needed)
-            self.app.root.after(500, self.app.slider_view.resize_canvas_if_needed)
-            
-            self.app.slider_view.update_marker_positions()
-            
-            # Restore muted stems
+            # Apply muted stems from settings
             if song_config.title in self.app.settings.mut:
                 for stem_name in self.app.settings.mut[song_config.title]:
                     self.app.eng.toggle_mute_stem(stem_name)

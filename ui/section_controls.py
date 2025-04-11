@@ -23,13 +23,14 @@ class SectionControlPanel(ttk.LabelFrame):
         self._sync_local_times_from_app()
         self.app.stt.trace_add("write", self._on_app_time_var_changed)
         self.app.ent.trace_add("write", self._on_app_time_var_changed)
-    
+
     def setup_ui(self):
         """Set up the section control UI."""
         # Configure column weights for the frame
         self.columnconfigure(1, weight=1)
-        self.columnconfigure(3, weight=2)
-        
+        self.columnconfigure(3, weight=1) # Adjusted weight
+        self.columnconfigure(4, weight=2) # Adjusted weight for name field
+
         self.nameField = tk.StringVar()
         self.app.snm.trace_add( "write", lambda *arg: self.nameField.set( self.app.snm.get() ) )
 
@@ -66,22 +67,64 @@ class SectionControlPanel(ttk.LabelFrame):
         ttk.Button(self.mbf, text="Save Section", command=self.save_section).pack(side=tk.LEFT, padx=5)
         ttk.Button(self.mbf, text="Delete Section", command=self.delete_section).pack(side=tk.LEFT, padx=5)
         
-        # View mode toggle
-        self.vmt = ttk.Checkbutton(self.mbf, text="Section View", variable=self.app.svm,
-                                  command=self.toggle_view_mode)
-        self.vmt.pack(side=tk.LEFT, padx=20)
+        # View control buttons
+        ttk.Button(self.mbf, text="View Section", command=self.set_view_to_section).pack(side=tk.LEFT, padx=(20, 5))
+        ttk.Button(self.mbf, text="Reset View", command=self.reset_view_range).pack(side=tk.LEFT, padx=5)
+
+        # REMOVED Section View toggle
+        # self.vmt = ttk.Checkbutton(self.mbf, text="Section View", variable=self.app.svm,
+        #                           command=self.toggle_view_mode)
+        # self.vmt.pack(side=tk.LEFT, padx=20)
 
         self.app.snm.trace_add("write", lambda *args: self.on_section_name_write() )
 
     def on_section_selected(self, event):
-        """When user selects a section from dropdown, update UI."""
+        """Handle selection change in the section combobox."""
         section_name = self.xcb.get()
-        if not section_name:
-            return
-            
-        # Update section name field
-        self.app.snm.set(section_name)
+        self.app.snm.set(section_name) # Update the shared variable
+
+        # Get section start/end times
+        if section_name == "Full Song":
+            start_time = 0.0
+            end_time = self.app.eng.get_total_duration()
+        else:
+            for s in self.app.eng.current_song.sections:
+                if s.name == section_name:
+                    start_time = s.start_time
+                    end_time = s.end_time
+                    break
+            else:
+                # Default if section not found
+                start_time = 0.0
+                end_time = self.app.eng.get_total_duration()
         
+        # Update time fields with formatted times
+        print("Start time (on_section_selected):", start_time)
+        self.app.stt.set(SliderTimeUtils.format_time(start_time))
+        self.app.ent.set(SliderTimeUtils.format_time(end_time))
+        
+        # Update markers
+        self.app.slider_view.update_marker_positions()
+        
+        # Update engine boundaries
+        self.app.eng.set_start_position(start_time)
+        self.app.eng.set_end_position(end_time)
+        
+        # If playing, check if current position is outside new bounds
+        if self.app.eng.is_playing():
+            current_pos = self.app.eng.get_current_position()
+            if current_pos < start_time or current_pos > end_time:
+                self.app.rewind_section_start() # Go to start of new section
+        else:
+            # If paused, move position to start of section
+            self.app.eng.set_position(start_time)
+            self.app.pos.set(start_time) # Update UI position
+            
+        self.app.sts.set(f"Selected section: {section_name}")
+        
+        # Save current section name to settings
+        self.app.settings.save_settings(self.app)
+
     def on_section_name_write(self):
         section_name = self.app.snm.get()
         self.xcb.set(section_name)
@@ -109,10 +152,9 @@ class SectionControlPanel(ttk.LabelFrame):
         # Update markers
         self.app.slider_view.update_marker_positions()
 
-        self.save_song_config()
-
-        # Save settings
-        # self.app.settings.save_settings(self.app)
+        # Save config to disk - Moved to save_section/delete_section/new_section
+        # self.save_song_config()
+        # self.app.settings.save_settings(self.app) # Save current section name
 
     def on_time_field_change(self, event):
         """Handle changes to time fields via UI interaction (Commit Logic)."""
@@ -279,35 +321,28 @@ class SectionControlPanel(ttk.LabelFrame):
         self.app.sts.set(f"Deleted section: {section_name}")
     
     def save_song_config(self):
-        """Save song config to disk."""
+        """Save the current song's configuration (sections, bpm) to its JSON file."""
         if not self.app.eng.current_song:
             return
-            
-        config_path = os.path.join(self.app.eng.current_song.path, "config.json")
-        
-        # Create config dict
-        config = {
+
+        song_path = self.app.eng.current_song.path
+        config_path = os.path.splitext(song_path)[0] + ".songlooper"
+
+        config_data = {
             "title": self.app.eng.current_song.title,
             "bpm": self.app.bpm.get(),
-            "current_section": self.app.snm.get(),
-            "sections": [
-                {
-                    "name": s.name,
-                    "start_time": s.start_time,
-                    "end_time": s.end_time,
-                    "muted": s.muted,
-                    "level": s.level
-                }
-                for s in self.app.eng.current_song.sections
-            ]
+            "sections": [s.__dict__ for s in self.app.eng.current_song.sections],
+            "current_section": self.app.snm.get()
         }
-        
+
         try:
             with open(config_path, 'w') as f:
-                json.dump(config, f, indent=2)
+                json.dump(config_data, f, indent=4)
+            print(f"Saved song config: {config_path}")
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to save config: {str(e)}")
-    
+            messagebox.showerror("Error", f"Failed to save song config: {e}")
+            print(f"Error saving song config: {e}")
+
     def update_section_combobox(self):
         """Update section dropdown with current sections."""
         if not self.app.eng.current_song:
@@ -321,26 +356,6 @@ class SectionControlPanel(ttk.LabelFrame):
         if not self.xcb.get() and sections:
             self.xcb.current(0)
             self.app.snm.set(sections[0])
-    
-    def toggle_view_mode(self):
-        """Toggle between whole song view and section view."""
-        start_time = SliderTimeUtils.parse_time(self.app.stt.get())
-        end_time = SliderTimeUtils.parse_time(self.app.ent.get())
-        
-        # Update slider view - directly update markers instead of slider range
-        self.app.slider_view.update_marker_positions()
-        
-        # If playing, no need to adjust; just let the update_song_position handle it
-        if not self.app.eng.is_playing():
-            current_pos = self.app.pos.get()
-            # Ensure position is within the visible range
-            if self.app.svm.get():
-                if current_pos < start_time:
-                    current_pos = start_time
-                elif current_pos > end_time:
-                    current_pos = end_time
-            self.app.pos.set(current_pos)
-            # self.app.slider_view.update_time_label(current_pos, self.app.eng.get_total_duration())
     
     def handle_time_field_playback_logic(self):
         """Apply playback logic after time field changes."""
@@ -359,11 +374,14 @@ class SectionControlPanel(ttk.LabelFrame):
             self.app.play_current()
             self.app.sts.set(f"Restarted playback from new start: {SliderTimeUtils.format_time(start_time)}")
         elif current_pos > end_time:
-            # Stop playback
-            self.app.eng.pause()
-            self.app.set_play_button_text(False)
-            self.app.eng.set_position(start_time)
-            self.app.sts.set(f"Playback stopped: position beyond new end time")
+            # Stop playback if loop is off, otherwise let loop handle it
+            if not self.app.lop.get():
+                self.app.eng.pause()
+                self.app.set_play_button_text(False)
+                self.app.eng.set_position(start_time) # Reset position to start
+                self.app.pos.set(start_time) # Update UI
+                self.app.sts.set(f"Playback stopped: position beyond new end time")
+            # If looping, the engine's loop logic will handle wrapping around
 
     # --- New Helper Methods ---
 
@@ -381,7 +399,11 @@ class SectionControlPanel(ttk.LabelFrame):
     def _restore_time_on_escape(self, event):
         """Restore the entry field value from the app's StringVar on Escape."""
         self._sync_local_times_from_app()
-        self.app.slider_view.canvas.focus_set()
+        # Try setting focus back to the slider canvas
+        if hasattr(self.app, 'slider_view') and self.app.slider_view:
+            self.app.slider_view.canvas.focus_set()
+        else: # Fallback focus
+            self.focus_set()
         # Return "break" to prevent further processing and keep focus
         return "break"
 
@@ -390,8 +412,8 @@ class SectionControlPanel(ttk.LabelFrame):
         current_pos = self.app.pos.get()
         formatted_time = SliderTimeUtils.format_time(current_pos)
         self.local_stt.set(formatted_time)
-        # Trigger commit logic
-        self.on_time_field_change(None) 
+        # Trigger commit logic - pass a dummy event or None
+        self.on_time_field_change(event) 
         print(f"Set start time to current position: {formatted_time}") # Optional feedback
 
     def set_end_time_to_current_pos(self, event=None):
@@ -399,7 +421,32 @@ class SectionControlPanel(ttk.LabelFrame):
         current_pos = self.app.pos.get()
         formatted_time = SliderTimeUtils.format_time(current_pos)
         self.local_ent.set(formatted_time)
-        # Trigger commit logic
-        self.on_time_field_change(None)
+        # Trigger commit logic - pass a dummy event or None
+        self.on_time_field_change(event)
         print(f"Set end time to current position: {formatted_time}") # Optional feedback
+
+    def reset_view_range(self):
+        """Set the view range to the full song duration."""
+        if not self.app.eng.current_song:
+            return
+        total_duration = self.app.eng.get_total_duration()
+        self.app.vst.set(0.0)
+        self.app.vet.set(total_duration)
+        self.app.sts.set("View reset to full song")
+
+    def set_view_to_section(self):
+        """Set the view range to the current section boundaries."""
+        if not self.app.eng.current_song:
+            return
+        try:
+            start_time = SliderTimeUtils.parse_time(self.app.stt.get())
+            end_time = SliderTimeUtils.parse_time(self.app.ent.get())
+            if start_time is not None and end_time is not None:
+                self.app.vst.set(start_time)
+                self.app.vet.set(end_time)
+                self.app.sts.set(f"View set to section: {self.app.snm.get()}")
+            else:
+                messagebox.showerror("Error", "Invalid section time format.")
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not set view to section: {e}")
 

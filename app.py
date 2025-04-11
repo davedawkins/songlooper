@@ -64,15 +64,18 @@ class GuitarPracticeApp:
         self.cin = tk.BooleanVar(value=False)  # Count-in
         self.snm = tk.StringVar()  # Section name
         self.songName = tk.StringVar()
-        self.svm = tk.BooleanVar(value=False)  # Section view mode
-        self.stt = tk.StringVar(value="00:00.0")  # Start time
-        self.ent = tk.StringVar(value="00:00.0")  # End time
+        self.stt = tk.StringVar(value="00:00.0")  # Section Start time
+        self.ent = tk.StringVar(value="00:00.0")  # Section End time
         self.bpm = tk.DoubleVar(value=120) #  BPM
 
         # Status variable
         self.sts = tk.StringVar(value="Ready")
         self.pos = tk.DoubleVar(value=0.0) # Song position
-        self.dur = tk.DoubleVar(value=0.0)
+        self.dur = tk.DoubleVar(value=0.0) # Song duration
+
+        # View range variables
+        self.vst = tk.DoubleVar(value=0.0) # View start time
+        self.vet = tk.DoubleVar(value=1.0) # View end time (will be updated by dur trace)
 
         # Settings manager
         self.settings = SettingsManager()
@@ -99,6 +102,26 @@ class GuitarPracticeApp:
         self.bpm.trace_add("write", lambda *args:self.section_panel.save_song_config())
         self.ent.trace_add("write", lambda *args: self.eng.set_end_position( SliderTimeUtils.parse_time(self.ent.get())) )
         self.stt.trace_add("write", lambda *args: self.eng.set_start_position( SliderTimeUtils.parse_time(self.stt.get())) )
+
+        # Traces for view range changes
+        self.vst.trace_add("write", lambda *args: self.slider_view.update_marker_positions() if hasattr(self, 'slider_view') else None)
+        self.vet.trace_add("write", lambda *args: self.slider_view.update_marker_positions() if hasattr(self, 'slider_view') else None)
+        # Trace duration to update view end time when song loads/changes
+        self.dur.trace_add("write", self._update_view_end_on_duration_change)
+
+    def _update_view_end_on_duration_change(self, *args):
+        """Update the view end time when the song duration changes."""
+        total_duration = self.dur.get()
+        if total_duration > 0:
+            # Only reset view if it seems uninitialized or covers the whole previous range
+            # This prevents resetting zoom when simply reloading the same song
+            current_vet = self.vet.get()
+            # Check if current_vet is close to the previous duration (if available)
+            # or if it's the default 1.0
+            # This logic might need refinement depending on desired behavior on reload
+            if abs(current_vet - total_duration) > 0.1 or abs(current_vet - 1.0) < 0.01:
+                 self.vet.set(total_duration)
+                 self.vst.set(0.0) # Reset start as well when duration changes significantly
 
     def save_settings(self):
         self.settings.save_settings(self)
@@ -409,7 +432,7 @@ class GuitarPracticeApp:
                 app.sts.set(f"Selected: {current_song}")
         
         if app.song_panel.scb.get():
-            app.song_panel.load_selected_song()
+            app.song_panel.load_selected_song() # This should trigger eng.load_song -> app.dur update -> _update_view_end_on_duration_change
         
         midi_settings = self.settings.midi_settings
         if midi_settings:
@@ -458,6 +481,11 @@ class GuitarPracticeApp:
             print("Start time (apply settngs): " + str(start_time))
             app.stt.set(SliderTimeUtils.format_time(start_time))
             app.ent.set(SliderTimeUtils.format_time(end_time))
+
+            # Initialize view range if not already set by duration trace
+            if self.vet.get() <= 1.0 and end_time > 0: # Check if vet is still default or small
+                self.vst.set(0.0)
+                self.vet.set(end_time) # Set initial view to full song duration
 
         self.update_song_position()
     
