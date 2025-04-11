@@ -67,6 +67,9 @@ class GuitarPracticeApp:
         self.ent = tk.StringVar(value="00:00.0")  # Section End time
         self.bpm = tk.DoubleVar(value=120) #  BPM
 
+        # Add trace to speed variable to update engine immediately
+        self.spd.trace_add("write", self._on_speed_changed)
+
         # Status variable
         self.sts = tk.StringVar(value="Ready")
         self.pos = tk.DoubleVar(value=0.0) # Song position
@@ -98,12 +101,50 @@ class GuitarPracticeApp:
         self.eng.add_mute_callback(self.on_mute_status_change)
         
         self.bpm.trace_add("write", lambda *args:self.section_panel.save_song_config())
-        self.ent.trace_add("write", lambda *args: self.eng.set_end_position( SliderTimeUtils.parse_time(self.ent.get())) )
-        self.stt.trace_add("write", lambda *args: self.eng.set_start_position( SliderTimeUtils.parse_time(self.stt.get())) )
+        # Update trace for ent to also update markers
+        self.ent.trace_add("write", lambda *args: self._on_ent_changed())
+        # Update trace for stt to also update markers
+        self.stt.trace_add("write", lambda *args: self._on_stt_changed())
 
         # Traces for view range changes
         self.vst.trace_add("write", lambda *args: self.slider_view.update_marker_positions() if hasattr(self, 'slider_view') else None)
         self.vet.trace_add("write", lambda *args: self.slider_view.update_marker_positions() if hasattr(self, 'slider_view') else None)
+
+        # Set initial focus to the slider canvas after the UI is idle
+        self.root.after_idle(lambda: self.slider_view.canvas.focus_set() if hasattr(self, 'slider_view') else None)
+
+    def _on_stt_changed(self, *args):
+        """Callback when the start time variable changes."""
+        try:
+            start_time = SliderTimeUtils.parse_time(self.stt.get())
+            if hasattr(self, 'eng'):
+                self.eng.set_start_position(start_time)
+            if hasattr(self, 'slider_view'):
+                self.slider_view.update_marker_positions()
+        except Exception as e:
+            print(f"Error handling stt change: {e}")
+
+    def _on_ent_changed(self, *args):
+        """Callback when the end time variable changes."""
+        try:
+            end_time = SliderTimeUtils.parse_time(self.ent.get())
+            if hasattr(self, 'eng'):
+                self.eng.set_end_position(end_time)
+            if hasattr(self, 'slider_view'):
+                self.slider_view.update_marker_positions()
+        except Exception as e:
+            print(f"Error handling ent change: {e}")
+
+    def _on_speed_changed(self, *args):
+        """Callback when the speed variable changes."""
+        if hasattr(self, 'eng'): # Ensure engine exists
+            try:
+                new_speed = self.spd.get()
+                self.eng.set_playback_speed(new_speed)
+                # Optional: Update status bar if not already handled elsewhere
+                # self.sts.set(f"Speed set to {new_speed}x")
+            except Exception as e:
+                print(f"Error setting engine speed: {e}")
 
     def save_settings(self):
         self.settings.save_settings(self)
@@ -265,8 +306,8 @@ class GuitarPracticeApp:
         # Bind to the root window for global keyboard handling
         self.root.bind_all("<space>", self.on_spacebar, add="+")
         self.root.bind_all("0", self.on_zero_key, add="+")
-        self.root.bind_all("<Left>", self.on_left_arrow, add="+")
-        
+        # self.root.bind_all("<Left>", self.on_left_arrow, add="+") # REMOVED global left arrow
+
         # We also need to handle various widgets that might consume the spacebar
         # Apply spacebar handling to all interactive widgets
         self._bind_spacebar_to_all_widgets(self.frm)
@@ -278,6 +319,25 @@ class GuitarPracticeApp:
              # Binding to the lowercase ensures it works regardless of Caps Lock state usually.
             self.slider_view.canvas.bind("<KeyPress-[>", self.section_panel.set_start_time_to_current_pos)
             self.slider_view.canvas.bind("<KeyPress-]>", self.section_panel.set_end_time_to_current_pos)
+            # Bind speed controls to comma and period keys on the slider canvas
+            self.slider_view.canvas.bind("<KeyPress-,>", self.decrease_speed) # '<' key
+            self.slider_view.canvas.bind("<KeyPress-.>", self.increase_speed) # '>' key
+            # Bind arrow keys for nudging end marker on the slider canvas - CHANGED TO J/L
+            self.slider_view.canvas.bind("<KeyPress-j>", self.nudge_end_time_backward) # WAS <KeyPress-Left>
+            self.slider_view.canvas.bind("<KeyPress-l>", self.nudge_end_time_forward) # WAS <KeyPress-Right>
+            # Bind A/D keys for nudging start marker on the slider canvas
+            self.slider_view.canvas.bind("<KeyPress-a>", self.nudge_start_time_backward)
+            self.slider_view.canvas.bind("<KeyPress-d>", self.nudge_start_time_forward)
+            # Bind S/E keys for moving position to start/end marker on the slider canvas
+            self.slider_view.canvas.bind("<KeyPress-s>", self.move_pos_to_start)
+            self.slider_view.canvas.bind("<KeyPress-e>", self.move_pos_to_end)
+            # Bind Left/Right arrow keys for nudging play position
+            self.slider_view.canvas.bind("<KeyPress-Left>", self.nudge_pos_backward)
+            self.slider_view.canvas.bind("<KeyPress-Right>", self.nudge_pos_forward)
+            # Bind Z/Shift-Z for view controls
+            self.slider_view.canvas.bind("<KeyPress-z>", self.slider_view.view_section)
+            self.slider_view.canvas.bind("<KeyPress-Z>", self.slider_view.reset_view) # Shift + z
+
 
     def _bind_spacebar_to_all_widgets(self, parent):
         """Recursively bind spacebar handler to all interactive widgets."""
@@ -332,44 +392,289 @@ class GuitarPracticeApp:
         self.rewind_section_start()
         return "break"  # Prevent default behavior
 
-    def on_left_arrow(self, event):
-        """Handle left arrow key press - go back 3 seconds."""
-        # Check if a text widget has focus (allow cursor movement)
-        focus_widget = self.root.focus_get()
-        if isinstance(focus_widget, (tk.Text, ttk.Entry, tk.Entry)):
-            # Let the key pass through to text entry widgets
-            return None
-            
+    def nudge_pos_backward(self, event=None):
+        """Nudge the playback position backward by 0.25s."""
         if not self.eng.current_song:
             return "break"
-            
-        # Get current position and section start
-        current_pos = self.eng.get_current_position()
-        start_time = SliderTimeUtils.parse_time(self.stt.get())
-        
-        # Calculate new position (3 seconds back, but not before section start)
-        new_pos = max(start_time, current_pos - 3.0)
-        
-        # Update engine position
-        was_playing = self.eng.is_playing()
-        if was_playing:
-            self.eng.pause()
 
-        self.eng.set_position(new_pos)
-        
-        # Update UI
-        self.pos.set(new_pos)
-        # self.slider_view.update_marker_positions()
-        
-        # Resume if was playing
-        if was_playing:
-            self.play_current()
-            self.sts.set(f"Moved back to {SliderTimeUtils.format_time(new_pos)}")
-        else:
-            self.sts.set(f"Position: {SliderTimeUtils.format_time(new_pos)}")
+        try:
+            current_pos = self.pos.get()
+            current_view_start = self.vst.get()
+            was_playing = self.eng.is_playing()
+
+            new_pos = max(0.0, current_pos - 0.25)
+
+            if was_playing:
+                self.eng.pause()
+
+            self.eng.set_position(new_pos)
+            self.pos.set(new_pos) # Update UI variable
+
+            # Adjust view start if necessary
+            if new_pos < current_view_start:
+                self.vst.set(new_pos)
+
+            formatted_time = SliderTimeUtils.format_time(new_pos)
+            self.sts.set(f"Position nudged back to {formatted_time}")
+
+            if was_playing:
+                self.play_current() # Resume playback
+
+        except Exception as e:
+            print(f"Error nudging position backward: {e}")
+            self.sts.set("Error nudging position")
+        return "break" # Prevent default behavior
+
+    def nudge_pos_forward(self, event=None):
+        """Nudge the playback position forward by 0.25s."""
+        if not self.eng.current_song:
+            return "break"
+
+        try:
+            current_pos = self.pos.get()
+            total_duration = self.eng.get_total_duration()
+            current_view_end = self.vet.get()
+            was_playing = self.eng.is_playing()
+
+            new_pos = min(total_duration, current_pos + 0.25)
+
+            if was_playing:
+                self.eng.pause()
+
+            self.eng.set_position(new_pos)
+            self.pos.set(new_pos) # Update UI variable
+
+            # Adjust view end if necessary
+            if new_pos > current_view_end:
+                self.vet.set(new_pos)
+
+            formatted_time = SliderTimeUtils.format_time(new_pos)
+            self.sts.set(f"Position nudged forward to {formatted_time}")
+
+            if was_playing:
+                self.play_current() # Resume playback
+
+        except Exception as e:
+            print(f"Error nudging position forward: {e}")
+            self.sts.set("Error nudging position")
+        return "break" # Prevent default behavior
+
+    def move_pos_to_start(self, event=None):
+        """Move the playback position to the section start marker."""
+        if not self.eng.current_song:
+            return "break"
+
+        try:
+            start_time = SliderTimeUtils.parse_time(self.stt.get())
+            was_playing = self.eng.is_playing()
+
+            if was_playing:
+                self.eng.pause()
+
+            self.eng.set_position(start_time)
+            self.pos.set(start_time) # Update UI variable
+
+            formatted_time = SliderTimeUtils.format_time(start_time)
+            self.sts.set(f"Position moved to section start: {formatted_time}")
+
+            if was_playing:
+                self.play_current() # Resume playback
+
+        except Exception as e:
+            print(f"Error moving position to start: {e}")
+            self.sts.set("Error moving position to start")
+        return "break" # Prevent default behavior
+
+    def move_pos_to_end(self, event=None):
+        """Move the playback position to the section end marker."""
+        if not self.eng.current_song:
+            return "break"
+
+        try:
+            end_time = SliderTimeUtils.parse_time(self.ent.get())
+            was_playing = self.eng.is_playing()
+
+            if was_playing:
+                self.eng.pause()
+
+            # Ensure position is slightly before the absolute end if looping to avoid immediate loop
+            # pos_to_set = end_time - 0.01 if self.lop.get() and end_time > 0 else end_time
+            # Let's just set it to the end time for now. The engine handles looping logic.
+            pos_to_set = end_time
+
+            self.eng.set_position(pos_to_set)
+            self.pos.set(pos_to_set) # Update UI variable
+
+            formatted_time = SliderTimeUtils.format_time(end_time)
+            self.sts.set(f"Position moved to section end: {formatted_time}")
+
+            if was_playing:
+                self.play_current() # Resume playback
+
+        except Exception as e:
+            print(f"Error moving position to end: {e}")
+            self.sts.set("Error moving position to end")
+        return "break" # Prevent default behavior
+
+    def nudge_start_time_backward(self, event=None):
+        """Nudge the section start time backward by 0.25s, extending view if needed."""
+        if not self.eng.current_song:
+            return "break"
+
+        try:
+            current_start_time = SliderTimeUtils.parse_time(self.stt.get())
+            current_view_start = self.vst.get()
+
+            new_start_time = current_start_time - 0.25
+            # Clamp: Ensure new start time is not less than 0.0
+            new_start_time = max(0.0, new_start_time)
+
+            formatted_time = SliderTimeUtils.format_time(new_start_time)
+            self.stt.set(formatted_time) # Trace will update engine and UI markers
+            self.sts.set(f"Start time nudged back to {formatted_time}")
+
+            # Extend view start if necessary
+            if new_start_time < current_view_start:
+                self.vst.set(new_start_time) # Trace will update UI markers
+
+        except Exception as e:
+            print(f"Error nudging start time backward: {e}")
+            self.sts.set("Error nudging start time")
+        return "break" # Prevent default behavior
+
+    def nudge_start_time_forward(self, event=None):
+        """Nudge the section start time forward by 0.25s."""
+        if not self.eng.current_song:
+            return "break"
+
+        try:
+            current_start_time = SliderTimeUtils.parse_time(self.stt.get())
+            end_time = SliderTimeUtils.parse_time(self.ent.get())
+            min_duration = 0.1 # Minimum allowed section duration
+
+            new_start_time = current_start_time + 0.25
+            # Clamp: Ensure new start time does not exceed end time - min_duration
+            new_start_time = min(end_time - min_duration, new_start_time)
+
+            formatted_time = SliderTimeUtils.format_time(new_start_time)
+            self.stt.set(formatted_time) # Trace will update engine and UI markers
+            self.sts.set(f"Start time nudged forward to {formatted_time}")
+
+        except Exception as e:
+            print(f"Error nudging start time forward: {e}")
+            self.sts.set("Error nudging start time")
+        return "break" # Prevent default behavior
+
+    def nudge_end_time_backward(self, event=None):
+        """Nudge the section end time backward by 0.25s."""
+        if not self.eng.current_song:
+            return "break"
+
+        try:
+            current_end_time = SliderTimeUtils.parse_time(self.ent.get())
+            start_time = SliderTimeUtils.parse_time(self.stt.get())
+            min_duration = 0.1 # Minimum allowed section duration
+
+            new_end_time = current_end_time - 0.25
+            # Clamp: Ensure new end time is not before start time + min_duration
+            new_end_time = max(start_time + min_duration, new_end_time)
+
+            formatted_time = SliderTimeUtils.format_time(new_end_time)
+            self.ent.set(formatted_time) # Trace will update engine and UI markers
+            self.sts.set(f"End time nudged back to {formatted_time}")
+
+        except Exception as e:
+            print(f"Error nudging end time backward: {e}")
+            self.sts.set("Error nudging end time")
+        return "break" # Prevent default behavior
+
+    def nudge_end_time_forward(self, event=None):
+        """Nudge the section end time forward by 0.25s, extending view if needed."""
+        if not self.eng.current_song:
+            return "break"
+
+        try:
+            current_end_time = SliderTimeUtils.parse_time(self.ent.get())
+            total_duration = self.eng.get_total_duration()
+            current_view_end = self.vet.get()
+
+            new_end_time = current_end_time + 0.25
+            # Clamp: Ensure new end time does not exceed total duration
+            new_end_time = min(total_duration, new_end_time)
+
+            formatted_time = SliderTimeUtils.format_time(new_end_time)
+            self.ent.set(formatted_time) # Trace will update engine and UI markers
+            self.sts.set(f"End time nudged forward to {formatted_time}")
+
+            # Extend view end if necessary
+            if new_end_time > current_view_end:
+                self.vet.set(new_end_time) # Trace will update UI markers
+
+        except Exception as e:
+            print(f"Error nudging end time forward: {e}")
+            self.sts.set("Error nudging end time")
+        return "break" # Prevent default behavior
+
+    def increase_speed(self, event=None):
+        """Increase playback speed to the next available value."""
+        if not hasattr(self, 'playback_panel'):
+            return "break" # Panel not ready
             
-        return "break"  # Prevent default behavior
-    
+        try:
+            current_speed = self.spd.get()
+            speeds = [float(s) for s in self.playback_panel.scx['values']]
+            
+            if current_speed in speeds:
+                current_index = speeds.index(current_speed)
+                if current_index < len(speeds) - 1:
+                    next_speed = speeds[current_index + 1]
+                    self.spd.set(next_speed)
+                    self.sts.set(f"Speed set to {next_speed}x")
+                    self.settings.save_settings(self) # Save setting
+            else:
+                # If current speed isn't exactly in the list, find the closest one and go up
+                closest_speed = min(speeds, key=lambda s: abs(s - current_speed))
+                closest_index = speeds.index(closest_speed)
+                if closest_index < len(speeds) - 1:
+                     next_speed = speeds[closest_index + 1]
+                     self.spd.set(next_speed)
+                     self.sts.set(f"Speed set to {next_speed}x")
+                     self.settings.save_settings(self) # Save setting
+
+        except Exception as e:
+            print(f"Error increasing speed: {e}")
+        return "break" # Prevent default behavior
+
+    def decrease_speed(self, event=None):
+        """Decrease playback speed to the previous available value."""
+        if not hasattr(self, 'playback_panel'):
+            return "break" # Panel not ready
+            
+        try:
+            current_speed = self.spd.get()
+            speeds = [float(s) for s in self.playback_panel.scx['values']]
+
+            if current_speed in speeds:
+                current_index = speeds.index(current_speed)
+                if current_index > 0:
+                    prev_speed = speeds[current_index - 1]
+                    self.spd.set(prev_speed)
+                    self.sts.set(f"Speed set to {prev_speed}x")
+                    self.settings.save_settings(self) # Save setting
+            else:
+                 # If current speed isn't exactly in the list, find the closest one and go down
+                closest_speed = min(speeds, key=lambda s: abs(s - current_speed))
+                closest_index = speeds.index(closest_speed)
+                if closest_index > 0:
+                     prev_speed = speeds[closest_index - 1]
+                     self.spd.set(prev_speed)
+                     self.sts.set(f"Speed set to {prev_speed}x")
+                     self.settings.save_settings(self) # Save setting
+
+        except Exception as e:
+            print(f"Error decreasing speed: {e}")
+        return "break" # Prevent default behavior
+
     def setup_folder_selection(self):
         """Setup the folder selection UI."""
         top = ttk.Frame(self.frm)
@@ -535,7 +840,7 @@ class GuitarPracticeApp:
     
     def on_window_resize(self, event):
         """Handle window resize events."""
-        if event.widget == self.root and hasattr(self, 'slider_view'):
+        if (event.widget == self.root and hasattr(self, 'slider_view')):
             self.slider_view.update_marker_positions()
     
     def on_mute_status_change(self, stem_name, is_muted):
@@ -613,7 +918,7 @@ class GuitarPracticeApp:
                 old_pos = current_pos
             
             self.eng.set_loop(self.lop.get())
-            self.eng.set_playback_speed(self.spd.get())
+            # self.eng.set_playback_speed(self.spd.get()) # Engine speed is now set via trace
             self.eng.set_loop_delay(self.dly.get())
 
             self.eng.play_section()

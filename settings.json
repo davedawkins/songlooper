@@ -43,11 +43,7 @@
     "BronYAur": [
       "BronYAur-Guitar"
     ],
-    "NoQuarterKvFixed": [
-      "LZ - LZNQ_Bass",
-      "LZ - LZNQ_Guitars",
-      "LZ - LZNQ_PartialClick"
-    ]
+    "NoQuarterKvFixed": []
   },
   "midi_settings": {
     "enabled": null,

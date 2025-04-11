@@ -147,3 +147,33 @@ class SliderView(ttk.Frame):
     def on_canvas_release(self, event):
         """Forward to markers."""
         self.markers.on_canvas_release(event)
+
+    def reset_view(self, event=None):
+        """Reset the view to show the entire song."""
+        if not self.app.eng.current_song:
+            return
+        total_duration = self.app.eng.get_total_duration()
+        self.app.vst.set(0.0)
+        self.app.vet.set(total_duration if total_duration > 0 else 1.0) # Use 1.0 if duration is 0
+        self.update_marker_positions()
+        # Set focus back to canvas
+        self.canvas.focus_set()
+
+    def view_section(self, event=None):
+        """Adjust view range to show only the current section."""
+        if not self.app.eng.current_song:
+            return
+        try:
+            start_time = SliderTimeUtils.parse_time(self.app.stt.get())
+            end_time = SliderTimeUtils.parse_time(self.app.ent.get())
+            # Ensure end > start
+            if end_time <= start_time:
+                end_time = start_time + 0.1 # Add small buffer if times are equal or invalid
+
+            self.app.vst.set(start_time)
+            self.app.vet.set(end_time)
+            self.update_marker_positions()
+            # Set focus back to canvas
+            self.canvas.focus_set()
+        except Exception as e:
+            print(f"Error in view_section: {e}")
