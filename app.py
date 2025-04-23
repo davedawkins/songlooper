@@ -42,7 +42,7 @@ class GuitarPracticeApp:
         self.root = root
         self.root.title("Guitar Practice Tool")
         self.root.geometry("1200x1200")
-        self.root.minsize(600, 800)
+        self.root.minsize(600, 600)
         
         # --- Engine & State ---
         self.eng = AudioEngine()
@@ -183,26 +183,27 @@ class GuitarPracticeApp:
         # Transport buttons (Positioned after slider, before notebook in layout)
         self.setup_transport()
 
-        # Create notebook for tabbed panels
-        self.notebook = ttk.Notebook(self.paned_window, padding=[0,0,0,10])
+        # Create notebook for tabbed panels, setting initial height
+        self.notebook = ttk.Notebook(self.paned_window, padding=[0,0,0,10], height=100) 
         # self.notebook.pack(fill=tk.BOTH, expand=True, pady=(0, 0)) # Removed old packing
-        self.paned_window.add(self.notebook, weight=1) # Add notebook to paned window
+        # Add notebook to paned window with low weight
+        self.paned_window.add(self.notebook, weight=0) 
         
-        monospace_font = tkFont.Font(family="Courier", size=12)  # Change "Courier" if needed
+        # monospace_font = tkFont.Font(family="Courier", size=12)  # Change "Courier" if needed
 
-        self.notes_frame = tk.Frame( self.notebook, bg="white")
-        self.notes_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
+        # self.notes_frame = tk.Frame( self.notebook, bg="white")
+        # self.notes_frame.pack(fill=tk.BOTH, expand=True, padx=0, pady=0)
         
-        self.notes_frame2 = tk.Frame( self.notes_frame)
-        self.notes_frame2.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        # self.notes_frame2 = tk.Frame( self.notes_frame)
+        # self.notes_frame2.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        self.notes_panel = HTMLLabel(self.notes_frame2, html="No notes", font=monospace_font, background="white", borderwidth=0, highlightthickness=0)
-        self.notes_panel.pack(fill=tk.BOTH, expand=True)
-        self.notebook.add(self.notes_frame, text="Notes")
+        # self.notes_panel = HTMLLabel(self.notes_frame2, html="No notes", font=monospace_font, background="white", borderwidth=0, highlightthickness=0)
+        # self.notes_panel.pack(fill=tk.BOTH, expand=True)
+        # self.notebook.add(self.notes_frame, text="Notes")
 
         # Stems panel (first tab)
-        self.stems_panel = StemsPanel(self.notebook, self)
-        self.notebook.add(self.stems_panel, text="Stems")
+        # self.stems_panel = StemsPanel(self.notebook, self)
+        # self.notebook.add(self.stems_panel, text="Stems")
         
         # MIDI settings panel (second tab)
         self.midi_panel = MidiSettingsPanel(self.notebook, self)
@@ -335,8 +336,11 @@ class GuitarPracticeApp:
             self.slider_view.canvas.bind("<KeyPress-Left>", self.nudge_pos_backward)
             self.slider_view.canvas.bind("<KeyPress-Right>", self.nudge_pos_forward)
             # Bind Z/Shift-Z for view controls
-            self.slider_view.canvas.bind("<KeyPress-z>", self.slider_view.view_section)
+            self.slider_view.canvas.bind("<KeyPress-z>", self.slider_view.toggle_zoom)
             self.slider_view.canvas.bind("<KeyPress-Z>", self.slider_view.reset_view) # Shift + z
+            # Bind 1-9 keys for toggling stem mute on the slider canvas
+            for i in range(1, 10):
+                self.slider_view.canvas.bind(f"<KeyPress-{i}>", self.on_stem_key_press)
 
 
     def _bind_spacebar_to_all_widgets(self, parent):
@@ -675,6 +679,35 @@ class GuitarPracticeApp:
             print(f"Error decreasing speed: {e}")
         return "break" # Prevent default behavior
 
+    def on_stem_key_press(self, event):
+        """Handle number key presses (1-9) to toggle stem mute when slider has focus."""
+        if not self.eng.current_song:
+            return "break" # No song loaded
+
+        try:
+            key_num = int(event.keysym) # Get the number pressed (1-9)
+            stem_index = key_num - 1 # Convert to 0-based index
+
+            stem_names = self.eng.get_stem_names()
+
+            if 0 <= stem_index < len(stem_names):
+                stem_name_to_toggle = stem_names[stem_index]
+                self.toggle_stem(stem_name_to_toggle)
+                # Status update is handled within toggle_stem
+            else:
+                # Optional: Provide feedback if the number doesn't correspond to a stem
+                # self.sts.set(f"No stem associated with key {key_num}")
+                pass
+
+        except ValueError:
+            # Should not happen if binding is correct, but good practice
+            print(f"Error: Non-numeric key bound to on_stem_key_press: {event.keysym}")
+        except Exception as e:
+            print(f"Error handling stem key press: {e}")
+            self.sts.set("Error toggling stem mute")
+
+        return "break" # Prevent default behavior and further propagation
+
     def setup_folder_selection(self):
         """Setup the folder selection UI."""
         top = ttk.Frame(self.frm)
@@ -847,7 +880,7 @@ class GuitarPracticeApp:
         """Callback for when a stem's mute status changes during playback."""
         print(f"App: Mute status changed for '{stem_name}' to {is_muted}")
         self.slider_view.update_marker_positions()
-        self.stems_panel.update_stem_mute_status(stem_name, is_muted)
+        # self.stems_panel.update_stem_mute_status(stem_name, is_muted)
 
     def update_song_position(self):
         """Poll engine position and update UI."""

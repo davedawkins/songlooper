@@ -142,7 +142,7 @@ class SongSelectionPanel(ttk.LabelFrame):
             self.app.ent.set(round(end_time, 4))
             
             # Update UI components
-            self.app.stems_panel.update_stems_panel()
+            # self.app.stems_panel.update_stems_panel()
             self.app.section_panel.update_section_combobox()
             self.app.slider_view.waveform.invalidate_cache() # Invalidate cache on song load
             

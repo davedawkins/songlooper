@@ -159,6 +159,15 @@ class SliderView(ttk.Frame):
         # Set focus back to canvas
         self.canvas.focus_set()
 
+    def toggle_zoom(self, event=None):
+        if not self.app.eng.current_song:
+            return
+        total_duration = self.app.eng.get_total_duration()
+        if self.app.vst.get() > 0.0 or self.app.vet.get() < total_duration:
+            self.reset_view()
+        else:
+            self.view_section()
+
     def view_section(self, event=None):
         """Adjust view range to show only the current section."""
         if not self.app.eng.current_song:

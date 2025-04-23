@@ -44,6 +44,7 @@
       "BronYAur-Guitar"
     ],
     "NoQuarterKvFixed": [
+      "LZ - LZNQ_Drum",
       "LZ - LZNQ_PartialClick",
       "LZ - LZNQ_Guitars"
     ],
@@ -77,6 +78,6 @@
     "next_section_note": 62,
     "prev_section_note": 63
   },
-  "view_start_time": 242.935,
-  "view_end_time": 249.0
+  "view_start_time": 0.0,
+  "view_end_time": 436.7377097505669
 }

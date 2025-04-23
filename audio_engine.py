@@ -79,11 +79,12 @@ class AudioEngine:
 
     def set_start_position(self, pos: float):
         """Next playback will end at 'pos' seconds."""
+        print("Engine: start position: " + str(pos))
         self._start_position = pos
 
     def set_end_position(self, pos: float):
         """Next playback will end at 'pos' seconds."""
-        print("set_end_position: " + str(pos))
+        print("Engine: end position: " + str(pos))
         self._end_position = pos
 
     def get_end_position(self) -> float:
@@ -128,6 +129,9 @@ class AudioEngine:
                 break
         return target
 
+    def clear_stem_cache(self):
+        self.processed_stems.clear()
+
     def load_song(self, song_folder: str) -> SongConfig:
         config_path = os.path.join(song_folder, "config.json")
         if not os.path.exists(config_path):
@@ -150,7 +154,7 @@ class AudioEngine:
         
         # Clear old stems
         self.stems.clear()
-        self.processed_stems.clear()
+        self.clear_stem_cache()
         
         # Load each audio file
         for file in os.listdir(song_folder):
@@ -231,14 +235,24 @@ class AudioEngine:
     # -------------------------------------------------------
     def custom_time_stretch(self, audio: np.ndarray, speed: float) -> np.ndarray:
         """Use RubberBand to time-stretch without pitch change."""
-        return pyrb.time_stretch(audio, self.stem_srs, speed)
+        # Add basic check for valid speed, though controller should ensure this
+        if speed <= 0:
+            print(f"Warning: custom_time_stretch called with invalid speed {speed}. Returning original.")
+            return audio
+        # Ensure input is float32 for pyrubberband
+        audio_float32 = audio.astype(np.float32)
+        return pyrb.time_stretch(audio_float32, self.stem_srs, speed)
 
+    # Note: _time_stretch_section is now superseded by _get_or_stretch_stem_snippet
+    # We keep it here for now if other parts of the code might use it, but the core
+    # playback logic will use the new method. Consider removing if unused later.
     def _time_stretch_section(self, stem_name: str, audio_slice: np.ndarray, speed: float) -> np.ndarray:
         """Cache time-stretch results so we don't recalc multiple times."""
+        # This cache key is less robust than the new one.
         slice_key = (stem_name, len(audio_slice), speed)
         if slice_key in self.processed_stems:
             return self.processed_stems[slice_key]
-        
+
         if audio_slice.ndim == 1:
             stretched = self.custom_time_stretch(audio_slice, speed)
             out = stretched.astype(np.float32)
@@ -250,7 +264,7 @@ class AudioEngine:
                 st = self.custom_time_stretch(single_ch, speed)
                 ch_list.append(st.astype(np.float32))
             out = np.column_stack(ch_list)
-        
+
         self.processed_stems[slice_key] = out
         return out
 
@@ -319,7 +333,6 @@ class AudioEngine:
         end_sample = int(end_sec * self.stem_srs)
         orig_len_samples = end_sample - start_sample
         if orig_len_samples <= 0:
-            # print(f"Warning: Invalid sample range length {orig_len_samples}.")
             return None # Invalid sample range
 
         # Use the provided speed argument
@@ -388,182 +401,298 @@ class AudioEngine:
         return mixed_section, channels
 
     # -------------------------------------------------------
+    #   AUDIO PREPARATION (New Methods)
+    # -------------------------------------------------------
+    def _get_or_stretch_stem_snippet(self, stem_name: str, start_sec: float, end_sec: float, speed: float) -> Optional[np.ndarray]:
+        """
+        Gets a time-stretched snippet of a single stem, using a cache.
+        Assumes valid inputs (start_sec < end_sec, speed > 0).
+        Uses a cache key: (stem_name, rounded_start, rounded_end, rounded_speed).
+        """
+        start_sec_r = round(start_sec, 6)
+        end_sec_r = round(end_sec, 6)
+        speed_r = round(speed, 6)
+        cache_key = (stem_name, start_sec_r, end_sec_r, speed_r)
+
+        print("get stem: " + str(cache_key))
+
+        cached_result = self.processed_stems.get(cache_key)
+        if cached_result is not None:
+            return cached_result
+
+        # --- Not cached, calculate ---
+        audio_data = self.stems.get(stem_name)
+        if audio_data is None: # Should not happen if controller is correct
+             print(f"Warning: Stem '{stem_name}' not found during snippet preparation.")
+             return None
+
+        start_sample = int(start_sec * self.stem_srs)
+        end_sample = int(end_sec * self.stem_srs)
+
+        # Basic bounds check for safety, even if controller should prevent invalid ranges
+        safe_start_sample = max(0, start_sample)
+        safe_end_sample = min(len(audio_data), end_sample)
+
+        if safe_start_sample >= safe_end_sample:
+            # Valid scenario if section is outside this stem's range
+            return None # Return None for empty snippet
+
+        snippet = audio_data[safe_start_sample:safe_end_sample]
+
+        if snippet.size == 0:
+            return None # Return None for empty snippet
+
+        # Perform time stretching
+        stretched_snippet = self.custom_time_stretch(snippet, speed)
+
+        # Store in cache
+        self.processed_stems[cache_key] = stretched_snippet
+        return stretched_snippet
+
+    def _prepare_mixed_audio(self, start_sec: float, end_sec: float, speed: float, current_muted_stems: set) -> tuple[np.ndarray, int]:
+        """
+        Prepares a fully mixed section using cached/stretched stem snippets.
+        Assumes valid inputs (start_sec < end_sec, speed > 0).
+        """
+        # 1. Determine max channels
+        channels = 1
+        if self.stems:
+            for sdata in self.stems.values():
+                if sdata.ndim > 1:
+                    channels = max(channels, sdata.shape[1])
+        else:
+            # No stems loaded, return empty array immediately
+            return np.zeros((0, channels), dtype=np.float32), channels
+
+        # 2. Calculate duration and output length (Assume valid inputs)
+        section_duration = end_sec - start_sec
+        # Add a small epsilon to prevent zero length due to float precision near loop points?
+        # Or rely on controller to ensure start_sec is strictly less than end_sec.
+        new_length = int(section_duration * self.stem_srs / speed)
+
+        # If calculated length is zero (e.g., very short section, high speed), return empty
+        if new_length <= 0:
+             return np.zeros((0, channels), dtype=np.float32), channels
+
+        # 3. Initialize mixed_section
+        mixed_section = np.zeros((new_length, channels), dtype=np.float32)
+
+        # 4. Loop through stems, get/stretch snippets, and mix
+        for stem_name in self.stems.keys():
+            if stem_name in current_muted_stems:
+                continue
+
+            # Get stretched snippet (using cache)
+            stretched_snippet = self._get_or_stretch_stem_snippet(stem_name, start_sec, end_sec, speed)
+
+            if stretched_snippet is not None and stretched_snippet.size > 0:
+                # Mix into the main buffer
+                length_to_mix = min(len(mixed_section), len(stretched_snippet))
+                if length_to_mix <= 0: continue # Skip if nothing to mix
+
+                if stretched_snippet.ndim == 1:
+                    # Add mono snippet to all channels
+                    mixed_section[:length_to_mix] += stretched_snippet[:length_to_mix, np.newaxis]
+                else:
+                    # Mix channel by channel up to the number of channels in mixed_section
+                    snippet_channels = stretched_snippet.shape[1]
+                    ch_to_mix = min(channels, snippet_channels)
+                    mixed_section[:length_to_mix, :ch_to_mix] += stretched_snippet[:length_to_mix, :ch_to_mix]
+
+        return mixed_section, channels
+
+    # -------------------------------------------------------
     #   INTERNAL PLAYBACK WORKER
     # -------------------------------------------------------
     def _playback_worker(self):
-        """Reads from self.current_section, streams audio from _start_position to end_time,
-           possibly loops if self.loop is True."""
-
-        # print("_playback: " + str(self._current_position) + " : " + str(self._start_position))
-        # Optional count-in
-
-        need_count_in = self.count_in and self._current_position == self._start_position
-
-        start_sec = self._current_position
-        end_sec = self._end_position
+        """
+        Streams audio for the selected section, handling loops and mute changes.
+        Uses cached time-stretched snippets and re-mixes on the fly if mutes change.
+        Assumes valid start/end times and speed are set by the controller.
+        """
+        # Initial setup based on current state when play was pressed
+        current_start = self._start_position
+        current_end = self._end_position
+        current_speed = self.playback_speed
+        frames_consumed = 0
+        playback_finished = False
         
-        while not self.stop_event.is_set():
+        # Determine initial channel count (can be refined if needed)
+        initial_channels = 1
+        if self.stems:
+            for sdata in self.stems.values():
+                if sdata.ndim > 1:
+                    initial_channels = max(initial_channels, sdata.shape[1])
 
-            if need_count_in:
-                need_count_in = False
-                self._play_count_in()
-                if self.stop_event.is_set():
-                    self.playing = False
+        channels = initial_channels
+        mixed_section = np.zeros((0, initial_channels), dtype=np.float32)        
+        current_mix_buffer = [ mixed_section ]
+        should_recompute = [True]
+ 
+        def recalculate():
+            nonlocal frames_consumed, channels, playback_finished, current_start, current_end, current_speed
+
+            time_changed = \
+                self._start_position != current_start or \
+                self._end_position != current_end
+
+            if  self.playback_speed != current_speed or time_changed:
+                should_recompute[0] = True
+                if time_changed:
+                    self.clear_stem_cache()
+
+            if should_recompute[0]:
+                should_recompute[0] = False
+
+                current_speed = self.playback_speed
+                current_start = self._start_position
+                current_end   = self._end_position
+
+                new_audio_data, channels = self._prepare_mixed_audio(
+                    current_start, current_end, current_speed, self.muted_stems
+                )
+
+                current_mix_buffer[0] = new_audio_data
+
+                frames_consumed = int( (float(self.stem_srs) * (self._current_position - current_start)) / current_speed )
+
+                # Ensure consumption point is valid for the new buffer
+                frames_consumed = min(frames_consumed, len(new_audio_data))
+
+        while not self.stop_event.is_set():
+            # --- Handle Count-in ---
+            # Check if count-in is needed *at the start of the intended section*
+            if self.count_in and self._current_position == self._start_position:
+                 self._play_count_in()
+                 if self.stop_event.is_set(): break # Stop if count-in was interrupted
+
+            frames_consumed = 0
+            playback_finished = False
+
+            def callback(outdata, frames, time_info, status):
+                nonlocal frames_consumed, playback_finished
+                recalculate()
+
+                # --- Feed audio data ---
+                active_buffer = current_mix_buffer[0]
+                buffer_len = len(active_buffer)
+                playback_finished = frames_consumed >= buffer_len
+
+                if playback_finished:
+                    # Buffer exhausted or became empty after recompute
+                    outdata[:] = 0 # Fill with silence
+                    self._current_position = min(current_end, self._current_position)
                     return
 
-            section_duration = end_sec - start_sec
-            if section_duration <= 0:
-                if self.loop:
-                    start_sec = self._start_position
-                    self._current_position = start_sec
-                    continue
-                else:
-                    break
-            
-            start_sample = int(start_sec * self.stem_srs)
-            end_sample = int(end_sec * self.stem_srs)
-            orig_len = end_sample - start_sample
-            if orig_len <= 0:
-                if self.loop:
-                    start_sec = self._start_position
-                    self._current_position = start_sec
-                    continue
-                else:
-                    break
-            
-            new_length = int(section_duration * self.stem_srs / self.playback_speed)
-            
-            channels = 1
-            for sdata in self.stems.values():
-                if len(sdata.shape) > 1:
-                    channels = max(channels, sdata.shape[1])
-            
-            mixed_section = np.zeros((new_length, channels), dtype=np.float32)
-            
-            for stem_name, audio_data in self.stems.items():
-                if stem_name in self.muted_stems:
-                    continue
-                snippet = audio_data[start_sample:end_sample]
-                stretched = self._time_stretch_section(stem_name, snippet, self.playback_speed)
-                
-                length_to_mix = min(len(mixed_section), len(stretched))
-                if stretched.ndim == 1:
-                    for c in range(channels):
-                        mixed_section[:length_to_mix, c] += stretched[:length_to_mix]
-                else:
-                    out_ch = min(channels, stretched.shape[1])
-                    mixed_section[:length_to_mix, :out_ch] += stretched[:length_to_mix, :out_ch]
-            
-            frames_consumed = 0
-            should_recompute = [False]  # Using list as mutable reference for the callback closure
-            
-            def callback(outdata, frames, time_info, status):
-                nonlocal frames_consumed, mixed_section
-                
-                # Check if we need to recompute the mix due to mute status change
-                if should_recompute[0]:
-                    should_recompute[0] = False  # Reset flag
+                start_idx = frames_consumed
+                frames_to_copy = min(frames, buffer_len - start_idx)
+                end_idx = start_idx + frames_to_copy
 
-                    remaining_samples = len(mixed_section)
+                try:
+                    # Check/adjust for channel mismatch before copying
+                    out_channels = outdata.shape[1]
+                    buf_channels = active_buffer.shape[1] if active_buffer.ndim > 1 else 1
 
-                    if remaining_samples > 0:
-                        # Calculate current position in samples
-                        current_sample_pos = start_sample + int((frames_consumed / float(self.stem_srs)) * self.playback_speed * self.stem_srs)
-                        end_sample_pos = end_sample
-                        
-                        # Skip if we're outside of valid range
-                        if current_sample_pos >= end_sample_pos:
-                            return
-                        
-                        # Create a new mixed section from the current position
-                        new_mixed = np.zeros((remaining_samples, channels), dtype=np.float32)
-                        for stem_name, audio_data in self.stems.items():
-                            if stem_name in self.muted_stems:
-                                continue
-                            
-                            remaining_orig_samples = end_sample_pos - current_sample_pos
-                            if remaining_orig_samples <= 0:
-                                continue
-                                
-                            snippet = audio_data[current_sample_pos:end_sample_pos]
-                            stretched = self._time_stretch_section(stem_name, snippet, self.playback_speed)
-                            
-                            stretch_len = min(remaining_samples, len(stretched))
-                            if stretched.ndim == 1:
-                                for c in range(channels):
-                                    new_mixed[:stretch_len, c] += stretched[:stretch_len]
-                            else:
-                                out_ch = min(channels, stretched.shape[1])
-                                new_mixed[:stretch_len, :out_ch] += stretched[:stretch_len, :out_ch]
-                        
-                        # Replace the remaining part of the mixed section
-                        mixed_section = new_mixed
-                
-                if status:
-                    print(status)
-                
-                if frames > len(mixed_section):
-                    outdata[:len(mixed_section)] = mixed_section
-                    outdata[len(mixed_section):] = 0
-                    frames_consumed += len(mixed_section)
-                    mixed_section = np.zeros((0, channels), dtype=np.float32)
-                    # self.stop_event.set()
-                    self._current_position = end_sec
-                else:
-                    outdata[:] = mixed_section[:frames]
-                    mixed_section = mixed_section[frames:]
-                    frames_consumed += frames
-                
-                    played_sec = (frames_consumed / float(self.stem_srs)) * self.playback_speed
-                    self._current_position = start_sec + played_sec
+                    if out_channels == buf_channels:
+                        outdata[:frames_to_copy] = active_buffer[start_idx : end_idx]
+                    elif out_channels > buf_channels: # Output expects more channels (e.g., mono -> stereo)
+                        # Repeat mono buffer across output channels
+                        outdata[:frames_to_copy, :] = active_buffer[start_idx : end_idx, np.newaxis]
+                    else: # Output expects fewer channels (e.g., stereo -> mono)
+                        # Mix down buffer channels or just take the first one? Take first for now.
+                        outdata[:frames_to_copy, 0] = active_buffer[start_idx : end_idx, 0]
+                        # Zero out remaining output channels if any
+                        if out_channels > 1:
+                             outdata[:frames_to_copy, 1:] = 0
 
-            # Define mute status change handler
+                    # Zero pad if request exceeds available data
+                    if frames_to_copy < frames:
+                        outdata[frames_to_copy:] = 0
+
+                    playback_finished = frames_consumed >= buffer_len
+
+                except IndexError as e:
+                    outdata[:] = 0 # Output silence on error
+                    playback_finished = True
+
+                frames_consumed += frames_to_copy
+
+                # Update global position (clamped to section end)
+                # Calculate based on frames consumed from the *original* duration perspective
+
+                # t = (f / srs) * s
+                # (srs * t) / s = f 
+                played_sec_original_timescale = (frames_consumed / float(self.stem_srs)) * current_speed
+                self._current_position = min(current_end, current_start + played_sec_original_timescale)
+
             def handle_mute_change(stem_name, is_muted):
+                # Simply signal the callback to handle the recompute
                 should_recompute[0] = True
-            
-            # Set callback for mute changes
+
+            # --- Stream Audio ---
             callback_id = self.add_mute_callback(handle_mute_change)
-            
+            stream = None # Define stream variable outside try block
             try:
-                with sd.OutputStream(samplerate=self.stem_srs,
-                                    channels=channels,
-                                    blocksize=1024,
-                                    dtype=np.float32,
-                                    callback=callback):
-                    while len(mixed_section) > 0 and not self.stop_event.is_set() and (self._end_position - self._current_position) > 0.001:
-                        time.sleep(0.05)
+                # Use the channel count determined by the initial preparation
+                stream = sd.OutputStream(samplerate=self.stem_srs,
+                                         channels=channels,
+                                         blocksize=1024, # Or make configurable
+                                         dtype=np.float32,
+                                         callback=callback)
+                stream.start()
+
+                # Wait loop: Check if buffer consumed or stop event
+                while not self.stop_event.is_set() and not playback_finished:
+                    sd.sleep(10) # Sleep in ms, sounddevice handles efficient waiting
+
+            except Exception as e:
+                 print(f"Error during audio stream: {e}")
+                 self.stop_event.set() # Ensure loop terminates on stream error
             finally:
-                # Restore the original callback
+                if stream:
+                    try:
+                        stream.stop()
+                        stream.close()
+                    except Exception as e:
+                        print(f"Error stopping/closing stream: {e}")
                 self.remove_mute_callback(callback_id)
 
+
+            # --- Post-Stream Logic ---
             if self.stop_event.is_set():
-                print("Stopped")
+                print("Playback stopped.")
+                break # Exit outer loop
+
+            if playback_finished and self.loop:
+                print("Looping section.")
+                # Apply delay
+                if self.loop_delay > 0:
+                    # Use stop_event.wait for interruptible sleep
+                    interrupted = self.stop_event.wait(timeout=self.loop_delay)
+                    if interrupted:
+                        print("Stopped during loop delay.")
+                        break
+                if self.stop_event.is_set(): break # Check again just in case
+
+                # Reset for next loop iteration
+                current_start = self._start_position
+                self._current_position = self._start_position # Reset playback marker
+                current_end = self._end_position
+                continue 
+
+            elif playback_finished and not self.loop:
+                print("Playback finished, no loop.")
+                break # Finished and not looping
+
+            else: # Playback interrupted for other reasons (e.g., stream error handled above)
+                print("Playback pass ended.")
                 break
-            
-            if len(mixed_section) == 0 and (self._end_position - self._current_position) > 0.001:
-                # End position likely changed to a larger value, go around but with current position
-                print("End changed?")
-                start_sec = self._current_position
-                end_sec = self._end_position
-                continue
 
-            if not self.loop:
-                break
-            
-            start_sec = self._current_position
-            end_sec = self._end_position
 
-            print("Delaying " + str(self.loop_delay))
-            time.sleep(self.loop_delay)
-
-            print("Restarting: " + str(self._start_position))
-            need_count_in = self.count_in
-
-            # start_sec = self.
-            self._current_position = self._start_position
-        
+        # --- End of outer while loop ---
         self.playing = False
-        # Do NOT forcibly set _start_position to end here.
+        print("Playback worker finished.")
+
 
     # -------------------------------------------------------
     #   COUNT-IN
