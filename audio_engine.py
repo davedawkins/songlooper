@@ -288,6 +288,106 @@ class AudioEngine:
         return max(len(x) for x in self.stems.values()) / self.stem_srs
 
     # -------------------------------------------------------
+    #   AUDIO PREPARATION
+    # -------------------------------------------------------
+    def _prepare_audio_section(self, start_sec: float, end_sec: float, speed: float, current_muted_stems: set) -> Optional[tuple[np.ndarray, int]]:
+        """
+        Prepares the mixed and time-stretched audio data for a given section.
+
+        Args:
+            start_sec: The start time of the section in seconds.
+            end_sec: The end time of the section in seconds.
+            speed: The playback speed factor.
+            current_muted_stems: A set of stem names to mute for this preparation.
+
+        Returns:
+            A tuple containing:
+                - A NumPy array with the prepared audio data (mixed_section).
+                - An integer representing the number of channels.
+            Returns None if the section duration is invalid or no audio data is produced.
+        """
+        if not self.stems or self.stem_srs == 0:
+            print("Warning: Stems not loaded or sample rate is zero.")
+            return None
+
+        section_duration = end_sec - start_sec
+        if section_duration <= 0:
+            # print(f"Warning: Invalid section duration {section_duration} ({start_sec} -> {end_sec}).")
+            return None # Invalid duration
+
+        start_sample = int(start_sec * self.stem_srs)
+        end_sample = int(end_sec * self.stem_srs)
+        orig_len_samples = end_sample - start_sample
+        if orig_len_samples <= 0:
+            # print(f"Warning: Invalid sample range length {orig_len_samples}.")
+            return None # Invalid sample range
+
+        # Use the provided speed argument
+        if speed <= 0:
+            print(f"Warning: Invalid playback speed {speed}.")
+            return None
+
+        new_length = int(section_duration * self.stem_srs / speed)
+        if new_length <= 0:
+             print(f"Warning: Calculated new length is zero or negative ({new_length}).")
+             return None
+
+        channels = 1
+        max_stem_len = 0
+        for sdata in self.stems.values():
+            if len(sdata.shape) > 1:
+                channels = max(channels, sdata.shape[1])
+            max_stem_len = max(max_stem_len, len(sdata))
+
+        # Ensure sample indices are within the bounds of the actual audio data
+        safe_start_sample = max(0, start_sample)
+        safe_end_sample = min(max_stem_len, end_sample) # Use max_stem_len for safety across all stems
+
+        if safe_start_sample >= safe_end_sample:
+             print(f"Warning: Safe sample range is invalid ({safe_start_sample} >= {safe_end_sample}).")
+             return None
+
+        mixed_section = np.zeros((new_length, channels), dtype=np.float32)
+
+        for stem_name, audio_data in self.stems.items():
+            if stem_name in current_muted_stems: # Use the provided set
+                continue
+
+            # Adjust end sample specifically for this stem's length
+            stem_safe_end_sample = min(len(audio_data), safe_end_sample)
+            if safe_start_sample >= stem_safe_end_sample:
+                continue # Skip if the section is outside this stem's range
+
+            snippet = audio_data[safe_start_sample:stem_safe_end_sample]
+            if snippet.size == 0:
+                continue
+
+            # Call _time_stretch_section (uses its own cache based on len(snippet))
+            stretched = self._time_stretch_section(stem_name, snippet, speed)
+
+            length_to_mix = min(len(mixed_section), len(stretched))
+            if length_to_mix <= 0:
+                continue
+
+            if stretched.ndim == 1:
+                # Ensure stretched is broadcastable if mixed_section has more channels
+                stretched_reshaped = stretched[:length_to_mix, np.newaxis] if channels > 1 else stretched[:length_to_mix]
+                try:
+                    mixed_section[:length_to_mix] += stretched_reshaped
+                except ValueError as e:
+                     print(f"Error mixing stem {stem_name} (1D): {e}. Shapes: mix={mixed_section[:length_to_mix].shape}, stretch={stretched_reshaped.shape}")
+
+            else:
+                out_ch = min(channels, stretched.shape[1])
+                try:
+                    mixed_section[:length_to_mix, :out_ch] += stretched[:length_to_mix, :out_ch]
+                except ValueError as e:
+                    print(f"Error mixing stem {stem_name} (ND): {e}. Shapes: mix={mixed_section[:length_to_mix, :out_ch].shape}, stretch={stretched[:length_to_mix, :out_ch].shape}")
+
+
+        return mixed_section, channels
+
+    # -------------------------------------------------------
     #   INTERNAL PLAYBACK WORKER
     # -------------------------------------------------------
     def _playback_worker(self):

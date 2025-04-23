@@ -43,7 +43,31 @@
     "BronYAur": [
       "BronYAur-Guitar"
     ],
-    "NoQuarterKvFixed": []
+    "NoQuarterKvFixed": [
+      "LZ - LZNQ_PartialClick",
+      "LZ - LZNQ_Guitars"
+    ],
+    "DancingDays": [
+      "DancingDays - Click",
+      "DancingDays - Synth",
+      "DancingDays - Organ",
+      "DancingDays - Drums",
+      "DancingDays - RG",
+      "DancingDays - EG1"
+    ],
+    "CelebrationDay": [
+      "CelebrationDay - Vocals",
+      "CelebrationDay - Crunch3",
+      "CelebrationDay - SynthLead",
+      "CelebrationDay - Crunch2",
+      "CelebrationDay - Crunch1",
+      "CelebrationDay - SynthFx",
+      "CelebrationDay - OD",
+      "CelebrationDay - Distorted Left",
+      "CelebrationDay - Crunch",
+      "CelebrationDay - EG",
+      "CelebrationDay - Distorted Right"
+    ]
   },
   "midi_settings": {
     "enabled": null,
@@ -53,6 +77,6 @@
     "next_section_note": 62,
     "prev_section_note": 63
   },
-  "view_start_time": 0.0,
-  "view_end_time": 436.7377097505669
+  "view_start_time": 242.935,
+  "view_end_time": 249.0
 }

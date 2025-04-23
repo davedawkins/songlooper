@@ -21,7 +21,7 @@ class PlaybackControlPanel(ttk.Frame):
         self.pbf.pack(fill=tk.X, expand=True, pady=5)
         
         ttk.Label(self.pbf, text="Speed:").pack(side=tk.LEFT, padx=(0, 5))
-        speeds = [0.25, 0.5, 0.75, 0.8, 0.9, 1.0, 1.1, 1.2, 1.5, 2.0]
+        speeds = [0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7,  0.75, 0.8, 0.85, 0.9, 0.95, 1.0, 1.1, 1.2, 1.5, 2.0]
         self.scx = ttk.Combobox(self.pbf, values=speeds, textvariable=self.app.spd, width=6)
         self.scx.pack(side=tk.LEFT, padx=(0, 15))
         self.scx.bind("<<ComboboxSelected>>", lambda e: self.app.settings.save_settings(self.app))
