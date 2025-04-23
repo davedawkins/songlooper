@@ -32,7 +32,7 @@ class SectionControlPanel(ttk.LabelFrame):
         self.columnconfigure(4, weight=2) # Adjusted weight for name field
 
         self.nameField = tk.StringVar()
-        self.app.snm.trace_add( "write", lambda *arg: self.nameField.set( self.app.snm.get() ) )
+        # self.app.snm.trace_add( "write", lambda *arg: self.nameField.set( self.app.snm.get() ) )
 
         # Row 0: Section selection and name
         ttk.Label(self, text="Section:").grid(row=0, column=0, sticky=tk.W, padx=(0, 5))
@@ -76,14 +76,17 @@ class SectionControlPanel(ttk.LabelFrame):
         #                           command=self.toggle_view_mode)
         # self.vmt.pack(side=tk.LEFT, padx=20)
 
-        self.app.snm.trace_add("write", lambda *args: self.on_section_name_write() )
+        self.app.snm.trace_add("write", lambda *args: self.sync_snm() )
 
-    def on_section_selected(self, event):
-        """Handle selection change in the section combobox."""
-        section_name = self.xcb.get()
-        self.app.snm.set(section_name) # Update the shared variable
+    def sync_snm(self):
 
-        # Get section start/end times
+        section_name = self.app.snm.get()
+
+        if self.xcb.get() != section_name:
+            self.xcb.set(section_name)
+        
+        self.nameField.set( self.app.snm.get() )        
+
         if section_name == "Full Song":
             start_time = 0.0
             end_time = self.app.eng.get_total_duration()
@@ -97,7 +100,7 @@ class SectionControlPanel(ttk.LabelFrame):
                 # Default if section not found
                 start_time = 0.0
                 end_time = self.app.eng.get_total_duration()
-        
+
         # Update time fields with formatted times
         print("Start time (on_section_selected):", start_time)
         self.app.stt.set(SliderTimeUtils.format_time(start_time))
@@ -121,40 +124,12 @@ class SectionControlPanel(ttk.LabelFrame):
             self.app.pos.set(start_time) # Update UI position
             
         self.app.sts.set(f"Selected section: {section_name}")
-        
-        # Save current section name to settings
-        self.app.settings.save_settings(self.app)
+        self.save_song_config() 
 
-    def on_section_name_write(self):
-        section_name = self.app.snm.get()
-        self.xcb.set(section_name)
-
-        # Get section start/end times
-        if section_name == "Full Song":
-            start_time = 0.0
-            end_time = self.app.eng.get_total_duration()
-        else:
-            for s in self.app.eng.current_song.sections:
-                if s.name == section_name:
-                    start_time = s.start_time
-                    end_time = s.end_time
-                    break
-            else:
-                # Default if section not found
-                start_time = 0.0
-                end_time = self.app.eng.get_total_duration()
-        
-        # Update time fields with formatted times
-        print("Start time (on_section_name_write):", start_time)
-        self.app.stt.set(SliderTimeUtils.format_time(start_time))
-        self.app.ent.set(SliderTimeUtils.format_time(end_time))
-        
-        # Update markers
-        self.app.slider_view.update_marker_positions()
-
-        # Save config to disk - Moved to save_section/delete_section/new_section
-        # self.save_song_config()
-        # self.app.settings.save_settings(self.app) # Save current section name
+    def on_section_selected(self, event):
+        """Handle selection change in the section combobox."""
+        section_name = self.xcb.get()
+        self.app.snm.set(section_name) # Assuming snm is updated via combobox textvariable or binding
 
     def on_time_field_change(self, event):
         """Handle changes to time fields via UI interaction (Commit Logic)."""
@@ -240,12 +215,7 @@ class SectionControlPanel(ttk.LabelFrame):
         
         # Update dropdown and select the new section
         self.update_section_combobox()
-        self.xcb.set(new_name)
         self.app.snm.set(new_name)
-        
-        # Save config to disk
-        self.save_song_config()
-        
         self.app.sts.set(f"Created new section: {new_name}")
     
     def save_section(self):
@@ -254,7 +224,7 @@ class SectionControlPanel(ttk.LabelFrame):
             messagebox.showerror("Error", "No song loaded")
             return
             
-        section_name = self.xcb.get()
+        section_name = self.app.snm.get()
         new_name = self.nameField.get().strip()
         
         if not new_name:
@@ -286,11 +256,7 @@ class SectionControlPanel(ttk.LabelFrame):
         
         # Update dropdown
         self.update_section_combobox()
-        self.xcb.set(new_name)
-        
-        # Save config to disk
-        self.save_song_config()
-        
+        self.app.snm.set(new_name)
         self.app.sts.set(f"Saved section: {new_name}")
     
     def delete_section(self):
@@ -312,12 +278,7 @@ class SectionControlPanel(ttk.LabelFrame):
         
         # Update dropdown and select Full Song
         self.update_section_combobox()
-        self.xcb.set("Full Song")
         self.app.snm.set("Full Song")
-        
-        # Save config to disk
-        self.save_song_config()
-        
         self.app.sts.set(f"Deleted section: {section_name}")
     
     def save_song_config(self):
@@ -325,8 +286,9 @@ class SectionControlPanel(ttk.LabelFrame):
         if not self.app.eng.current_song:
             return
 
-        song_path = self.app.eng.current_song.path
-        config_path = os.path.splitext(song_path)[0] + ".songlooper"
+        # Assume self.app.eng.current_song.path is the song's directory path
+        song_dir = self.app.eng.current_song.path 
+        config_path = os.path.join(song_dir, "config.json")
 
         config_data = {
             "title": self.app.eng.current_song.title,

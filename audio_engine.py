@@ -25,6 +25,7 @@ class SongConfig:
     bpm: float
     sections: List[Section]
     current_section: str
+    last_selected_section: str = "Full Song"  # Added
 
 class AudioEngine:
     def __init__(self):
@@ -149,7 +150,8 @@ class AudioEngine:
             path=song_folder,
             bpm=config_data.get('bpm', 120.0),
             sections=sections,
-            current_section=config_data.get("current_section", "Full Song")
+            current_section=config_data.get("current_section", "Full Song"),
+            last_selected_section=config_data.get("current_section", "Full Song")  # Added
         )
         
         # Clear old stems

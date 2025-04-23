@@ -1026,56 +1026,58 @@ class GuitarPracticeApp:
         if not hasattr(self, 'section_panel') or not self.eng.current_song:
             return
             
-        # Get current section
-        current_section = self.section_panel.xcb.get()
+        current_section = self.snm.get() # Use app.snm directly
         sections = list(self.section_panel.xcb['values'])
-        
+
         if not sections:
             return
             
-        # Find current index
         try:
             current_index = sections.index(current_section)
             next_index = (current_index + 1) % len(sections)
-            # Set the new section
-            self.section_panel.xcb.set(sections[next_index])
-            # Trigger the selection handler
-            self.section_panel.on_section_selected(None)
-            self.sts.set(f"Selected section: {sections[next_index]}")
+            next_section_name = sections[next_index]
+            # Set the new section (this triggers on_section_name_write via trace, which saves)
+            self.snm.set(next_section_name) 
+            self.sts.set(f"Selected section: {next_section_name}")
+            # REMOVED: Save the song config - now handled by snm trace
+            # self.section_panel.save_song_config() 
         except ValueError:
             # Section not found in list
             if sections:
-                self.section_panel.xcb.set(sections[0])
-                self.section_panel.on_section_selected(None)
-                self.sts.set(f"Selected section: {sections[0]}")
+                first_section_name = sections[0]
+                self.snm.set(first_section_name) # Triggers trace/save
+                self.sts.set(f"Selected section: {first_section_name}")
+                # REMOVED: Save the song config
+                # self.section_panel.save_song_config()
     
     def go_to_prev_section(self):
         """Navigate to the previous section in the list."""
         if not hasattr(self, 'section_panel') or not self.eng.current_song:
             return
             
-        # Get current section
-        current_section = self.section_panel.xcb.get()
+        current_section = self.snm.get() # Use app.snm directly
         sections = list(self.section_panel.xcb['values'])
         
         if not sections:
             return
             
-        # Find current index
         try:
             current_index = sections.index(current_section)
             prev_index = (current_index - 1) % len(sections)
-            # Set the new section
-            self.section_panel.xcb.set(sections[prev_index])
-            # Trigger the selection handler
-            self.section_panel.on_section_selected(None)
-            self.sts.set(f"Selected section: {sections[prev_index]}")
+            prev_section_name = sections[prev_index]
+            # Set the new section (this triggers on_section_name_write via trace, which saves)
+            self.snm.set(prev_section_name)
+            self.sts.set(f"Selected section: {prev_section_name}")
+            # REMOVED: Save the song config - now handled by snm trace
+            # self.section_panel.save_song_config()
         except ValueError:
             # Section not found in list
             if sections:
-                self.section_panel.xcb.set(sections[-1])
-                self.section_panel.on_section_selected(None)
-                self.sts.set(f"Selected section: {sections[-1]}")
+                last_section_name = sections[-1]
+                self.snm.set(last_section_name) # Triggers trace/save
+                self.sts.set(f"Selected section: {last_section_name}")
+                # REMOVED: Save the song config
+                # self.section_panel.save_song_config()
     
     def on_closing(self):
         """Handle window close."""

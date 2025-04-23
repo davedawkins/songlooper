@@ -121,29 +121,19 @@ class SongSelectionPanel(ttk.LabelFrame):
             # Sections
             self.app.section_panel.update_section_combobox()
             
-            # Initialize section boundaries
-            if self.app.section_panel.xcb.get() == "Full Song":
-                start_time = 0.0
-                end_time = self.app.eng.get_total_duration()
+            # --- Apply last selected section ---
+            last_section = song_config.last_selected_section
+            available_sections = self.app.section_panel.xcb["values"]
+            if last_section in available_sections:
+                self.app.snm.set(last_section) # This triggers trace to update times
             else:
-                for s in song_config.sections:
-                    if s.name == self.app.section_panel.xcb.get():
-                        start_time = s.start_time
-                        end_time = s.end_time
-                        break
-                else:  # Default if section not found
-                    start_time = 0.0
-                    end_time = self.app.eng.get_total_duration()
-            
-            # Set section name and times
-            self.app.snm.set(song_config.current_section)
-            print("Start time (load selected song):", start_time)
-            self.app.stt.set(round(start_time, 4))
-            self.app.ent.set(round(end_time, 4))
+                print(f"Warning: Last selected section '{last_section}' not found. Defaulting to 'Full Song'.")
+                self.app.snm.set("Full Song") # This triggers trace to update times
+            # --- End Apply last selected section ---
             
             # Update UI components
-            # self.app.stems_panel.update_stems_panel()
-            self.app.section_panel.update_section_combobox()
+            # self.app.stems_panel.update_stems_panel() # Assuming stems panel is handled elsewhere or not present
+            # self.app.section_panel.update_section_combobox() # Already called above
             self.app.slider_view.waveform.invalidate_cache() # Invalidate cache on song load
             
             # Reset view range to full song duration on manual load

@@ -44,12 +44,8 @@ class SettingsManager:
         
         self.mut = data.get("muted_stems_info", {})
 
-        # self.pss = data.get("current_section", None)
-        
         # Load MIDI settings if available
         self.midi_settings = data.get("midi_settings", {})
-
-        # self.section_name = data.get("current_section", "Full Song")
 
         # Load view times, default to 0.0 and 1.0 if not found
         app.vst.set(data.get("view_start_time", 0.0))
@@ -70,7 +66,6 @@ class SettingsManager:
         data = {
             "songs_folder": app.dir,
             "current_song": app.song_panel.scb.get() if hasattr(app, 'song_panel') else "",
-            "current_section": app.section_panel.xcb.get() if hasattr(app, 'section_panel') else "",
             "speed": app.spd.get(),
             "loop_delay": app.dly.get(),
             "loop_playback": app.lop.get(),
