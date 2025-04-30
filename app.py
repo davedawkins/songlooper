@@ -212,7 +212,7 @@ class GuitarPracticeApp:
         # Status bar
         ttk.Label(self.frm, textvariable=self.sts, relief=tk.SUNKEN, anchor=tk.W).pack(fill=tk.X, side=tk.BOTTOM)
 
-        self.songName.trace_add( "write", lambda *args: self.loadNotes())
+        # self.songName.trace_add( "write", lambda *args: self.loadNotes())
     
 
     def toggle_stem(self, stem_name):
@@ -264,17 +264,17 @@ class GuitarPracticeApp:
     </div>
     """
 
-    def loadNotes(self):
-        song_name = self.songName.get()
-        notes_path = os.path.join(self.dir,song_name, "notes.md")
-        if os.path.exists(notes_path):
-            with open(notes_path, "r", encoding="utf-8") as file:
-                content = file.read()
-                html_text = markdown.markdown(content)
-                self.notes_panel.set_html( GuitarPracticeApp.wrapHtml(html_text) )
-                print(html_text)
-        else:
-            self.notes_panel.set_html( GuitarPracticeApp.wrapHtml("(Add song notes to " + notes_path + ")") )
+    # def loadNotes(self):
+    #     song_name = self.songName.get()
+    #     notes_path = os.path.join(self.dir,song_name, "notes.md")
+    #     if os.path.exists(notes_path):
+    #         with open(notes_path, "r", encoding="utf-8") as file:
+    #             content = file.read()
+    #             html_text = markdown.markdown(content)
+    #             self.notes_panel.set_html( GuitarPracticeApp.wrapHtml(html_text) )
+    #             print(html_text)
+    #     else:
+    #         self.notes_panel.set_html( GuitarPracticeApp.wrapHtml("(Add song notes to " + notes_path + ")") )
             
     def setup_menu(self):
         """Set up application menu."""
@@ -1047,8 +1047,6 @@ class GuitarPracticeApp:
                 first_section_name = sections[0]
                 self.snm.set(first_section_name) # Triggers trace/save
                 self.sts.set(f"Selected section: {first_section_name}")
-                # REMOVED: Save the song config
-                # self.section_panel.save_song_config()
     
     def go_to_prev_section(self):
         """Navigate to the previous section in the list."""
