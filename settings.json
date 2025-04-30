@@ -1,7 +1,7 @@
 {
   "songs_folder": "/Users/david/projects/Songs",
   "current_song": "NoQuarterKvFixed",
-  "speed": 0.95,
+  "speed": 1.0,
   "loop_delay": 0.0,
   "loop_playback": true,
   "count_in": false,
@@ -76,6 +76,6 @@
     "next_section_note": 62,
     "prev_section_note": 63
   },
-  "view_start_time": 242.935,
-  "view_end_time": 294.343
+  "view_start_time": 0.0,
+  "view_end_time": 436.7377097505669
 }

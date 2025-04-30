@@ -1,7 +1,7 @@
 import os
 import tkinter as tk
 from tkinter import ttk, messagebox, Menu
-from audio_engine import AudioEngine
+from audio_engine import AudioEngine, Section  # Ensure Section is imported
 import tkinter.font as tkFont
 
 from ui.song_selection import SongSelectionPanel
@@ -341,6 +341,8 @@ class GuitarPracticeApp:
             # Bind 1-9 keys for toggling stem mute on the slider canvas
             for i in range(1, 10):
                 self.slider_view.canvas.bind(f"<KeyPress-{i}>", self.on_stem_key_press)
+            # Bind S key for splitting section at play marker
+            self.slider_view.canvas.bind("<KeyPress-s>", self.split_section_at_play_marker)
 
 
     def _bind_spacebar_to_all_widgets(self, parent):
@@ -749,6 +751,7 @@ class GuitarPracticeApp:
         self.settings.load_settings(self)
 
     def apply_settings(self):
+        """Apply settings and ensure the 'Full Song' section is handled consistently."""
         app = self
         current_song = self.settings.current_song
         # Read the view range values *already loaded* by load_settings
@@ -807,6 +810,25 @@ class GuitarPracticeApp:
         # Load section times in mm:ss.c format
         # This must happen after song is loaded so we have valid section data
         if app.eng.current_song:
+            # Ensure there are no sections before adding the "Full Song" section
+            if not app.eng.current_song.sections:
+                total_duration = app.eng.get_total_duration()
+                full_song_section = Section(
+                    name="Full Song",
+                    muted=False,
+                    level=1.0,
+                    start_time=0.0,
+                    end_time=total_duration
+                )
+                app.eng.current_song.sections.append(full_song_section)
+                print(f"Ensured 'Full Song' section exists: {full_song_section}")  # Debug statement
+
+            # Update the UI and select the first section (if any)
+            if not app.snm.get() and app.eng.current_song.sections:
+                app.snm.set(app.eng.current_song.sections[0].name)  # Select the first section
+            app.section_panel.update_section_combobox()
+            app.section_panel.save_song_config()
+
             section_name = app.snm.get()
             print("Section: " + section_name)
 
@@ -1077,6 +1099,70 @@ class GuitarPracticeApp:
                 # REMOVED: Save the song config
                 # self.section_panel.save_song_config()
     
+    def split_section_at_play_marker(self, event=None):
+        """Split the current section into two at the play marker."""
+        if not self.eng.current_song:
+            messagebox.showerror("Error", "No song loaded")
+            return
+
+        try:
+            # Get the current play position
+            play_marker_time = self.pos.get()
+
+            # Find the current section based on the play marker position
+            current_section = None
+            for section in self.eng.current_song.sections:
+                if section.start_time <= play_marker_time < section.end_time:
+                    current_section = section
+                    break
+
+            if not current_section:
+                messagebox.showerror("Error", "No section found at the play marker position")
+                return
+
+            # Ensure the play marker is within the current section
+            if not (current_section.start_time < play_marker_time < current_section.end_time):
+                messagebox.showerror("Error", "Play marker is outside the current section")
+                return
+
+            # Create two new sections
+            section_1_name = f"{current_section.name}.1"
+            section_2_name = f"{current_section.name}.2"
+
+            section_1 = Section(
+                name=section_1_name,
+                muted=current_section.muted,
+                level=current_section.level,
+                start_time=current_section.start_time,
+                end_time=play_marker_time
+            )
+
+            section_2 = Section(
+                name=section_2_name,
+                muted=current_section.muted,
+                level=current_section.level,
+                start_time=play_marker_time,
+                end_time=current_section.end_time
+            )
+
+            # Replace the current section with the two new sections
+            self.eng.current_song.sections.remove(current_section)
+            self.eng.current_song.sections.extend([section_1, section_2])
+
+            # Sort sections by start time
+            self.eng.current_song.sections.sort(key=lambda s: s.start_time)
+
+            # Update the UI and save the configuration
+            self.section_panel.update_section_combobox()
+            self.snm.set(section_1_name)  # Select the first new section
+            self.section_panel.save_song_config()
+
+            self.sts.set(f"Split section '{current_section.name}' into '{section_1_name}' and '{section_2_name}'")
+
+        except Exception as e:
+            print(f"Error splitting section: {e}")
+            messagebox.showerror("Error", f"Failed to split section: {e}")
+
     def on_closing(self):
         """Handle window close."""
         if self.eng.is_playing():
@@ -1088,3 +1174,28 @@ class GuitarPracticeApp:
             
         self.settings.save_settings(self)
         self.root.destroy()
+
+    def load_selected_song(self):
+        """Load the selected song and ensure the 'Full Song' section exists if no sections are present."""
+        # Call the method to load the selected song
+        self.song_panel.load_selected_song()
+
+        if self.eng.current_song:
+            # Ensure there are no sections before adding the "Full Song" section
+            if not self.eng.current_song.sections:
+                total_duration = self.eng.get_total_duration()
+                full_song_section = Section(
+                    name="Full Song",
+                    muted=False,
+                    level=1.0,
+                    start_time=0.0,
+                    end_time=total_duration
+                )
+                self.eng.current_song.sections.append(full_song_section)
+                print(f"Added 'Full Song' section: {full_song_section}")  # Debug statement
+
+            # Update the UI and select the first section (if any)
+            self.section_panel.update_section_combobox()
+            if not self.snm.get() and self.eng.current_song.sections:
+                self.snm.set(self.eng.current_song.sections[0].name)  # Select the first section
+            self.section_panel.save_song_config()
